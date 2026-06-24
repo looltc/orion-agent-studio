@@ -1,7 +1,10 @@
 import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useState, useEffect } from "react";
+import { ThemeProvider } from "../src/theme/ThemeContext";
 import Layout from "./Layout";
 import LoginPage from "./pages/LoginPage";
+import DashboardPage from "../src/pages/DashboardPage";
+import AgentWorkspacePage from "../src/pages/AgentWorkspacePage";
 import TasksPage from "../src/pages/TasksPage";
 import TaskDetailPage from "../src/pages/TaskDetailPage";
 import HistoryPage from "../src/pages/HistoryPage";
@@ -23,24 +26,28 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <HashRouter>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route
-          element={
-            <AuthGuard>
-              <Layout />
-            </AuthGuard>
-          }
-        >
-          <Route path="/" element={<TasksPage />} />
-          <Route path="/task/:taskId" element={<TaskDetailPage />} />
-          <Route path="/history" element={<HistoryPage />} />
-          <Route path="/audit" element={<AuditPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-        </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </HashRouter>
+    <ThemeProvider>
+      <HashRouter>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route
+            element={
+              <AuthGuard>
+                <Layout />
+              </AuthGuard>
+            }
+          >
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/agent/:agentId" element={<AgentWorkspacePage />} />
+            <Route path="/chat" element={<TasksPage />} />
+            <Route path="/task/:taskId" element={<TaskDetailPage />} />
+            <Route path="/history" element={<HistoryPage />} />
+            <Route path="/audit" element={<AuditPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+          </Route>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </HashRouter>
+    </ThemeProvider>
   );
 }

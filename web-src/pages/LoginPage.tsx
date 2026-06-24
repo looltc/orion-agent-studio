@@ -4,8 +4,12 @@ import { Key, LogIn, Server } from "lucide-react";
 import rpc from "../../src/client/rpc";
 
 export default function LoginPage() {
-  const [host, setHost] = useState("127.0.0.1");
-  const [port, setPort] = useState("9877");
+  const [host, setHost] = useState(
+    () => localStorage.getItem("orion_host") || "127.0.0.1"
+  );
+  const [port, setPort] = useState(
+    () => localStorage.getItem("orion_port") || "9877"
+  );
   const [token, setToken] = useState("");
   const [error, setError] = useState("");
   const [connecting, setConnecting] = useState(false);
@@ -16,16 +20,18 @@ export default function LoginPage() {
     setError("");
     setConnecting(true);
 
+    // 保存用户选择的端点
+    localStorage.setItem("orion_host", host);
+    localStorage.setItem("orion_port", port);
+    // 重新配置 RPC 客户端
+    rpc.reconfigure(host, parseInt(port, 10) || 9877);
+
     try {
-      // 连接 Daemon
       await rpc.connect();
       const status = await rpc.getDaemonStatus();
 
-      // 简单 token 校验（生产环境应从 Daemon 验证）
       const savedToken = token.trim() || "orion-demo-token";
       localStorage.setItem("orion_token", savedToken);
-      localStorage.setItem("orion_host", host);
-      localStorage.setItem("orion_port", port);
 
       navigate("/");
     } catch (err) {
