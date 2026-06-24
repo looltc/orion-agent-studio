@@ -1,5 +1,5 @@
 import type { BusEvent } from "@/types/protocol";
-import { CheckCircle, XCircle, ArrowRight, Globe, Monitor, Terminal } from "lucide-react";
+import { CheckCircle, XCircle, ArrowRight, Globe, Monitor, Terminal, FileCode } from "lucide-react";
 
 interface StepTimelineProps {
   events: BusEvent[];
@@ -9,6 +9,7 @@ const iconOf = (source: string) => {
   if (source.includes("browser")) return Globe;
   if (source.includes("desktop")) return Monitor;
   if (source.includes("terminal")) return Terminal;
+  if (source.includes("code")) return FileCode;
   return ArrowRight;
 };
 

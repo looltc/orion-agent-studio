@@ -98,3 +98,24 @@ export interface RpcResult<T = unknown> {
   error?: string;
   ok?: boolean;
 }
+
+// ---- Code Capability types ----
+
+export interface CodeDiffEntry {
+  op: "replace" | "delete" | "insert";
+  old_start: number;
+  old_end: number;
+  new_start: number;
+  new_end: number;
+  old_content: string[];
+  new_content: string[];
+}
+
+export interface CodeChangeEvent {
+  tool: string;
+  path: string;
+  operations_applied?: number;
+  diff?: CodeDiffEntry[];
+  created?: boolean;
+  bytes_written?: number;
+}
