@@ -50,6 +50,7 @@ export default function DashboardPage() {
   const [providers, setProviders] = useState<LLMProvider[]>([]);
   const [providersLoading, setProvidersLoading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -78,6 +79,7 @@ export default function DashboardPage() {
   const handleChat = (agent: Agent) => navigate(`/agent/${agent.id}`);
   const handleConfigure = (agent: Agent) => {
     setEditingAgent(agent);
+    setFormError(null);
     loadProvidersForForm();
     setForm({
       name: agent.name,
@@ -110,71 +112,90 @@ export default function DashboardPage() {
 
   const handleCreate = async () => {
     if (!form.name.trim() || !form.role.trim()) return;
-    await agentStore.create({
-      name: form.name.trim(),
-      role: form.role.trim(),
-      version: "1.0.0",
-      owner: "admin",
-      personality: {
+    setFormError(null);
+    try {
+      await agentStore.create({
         name: form.name.trim(),
-        traits: form.traits
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean),
-      },
-      capabilities: CAPABILITY_OPTIONS.map((c) => ({
-        ...c,
-        enabled: form.capabilities.includes(c.key),
-      })),
-      system_prompt: form.systemPrompt.trim() || undefined,
-      skills: form.skills.length > 0 ? form.skills : undefined,
-      llm_provider_id: form.llmProviderId || undefined,
-    });
-    setShowCreate(false);
-    setForm(emptyForm);
-    refresh();
+        role: form.role.trim(),
+        version: "1.0.0",
+        owner: "admin",
+        personality: {
+          name: form.name.trim(),
+          traits: form.traits
+            .split(",")
+            .map((t) => t.trim())
+            .filter(Boolean),
+        },
+        capabilities: CAPABILITY_OPTIONS.map((c) => ({
+          ...c,
+          enabled: form.capabilities.includes(c.key),
+        })),
+        system_prompt: form.systemPrompt.trim() || undefined,
+        skills: form.skills.length > 0 ? form.skills : undefined,
+        llm_provider_id: form.llmProviderId || undefined,
+      });
+      setShowCreate(false);
+      setForm(emptyForm);
+      refresh();
+    } catch (e) {
+      setFormError(`创建失败: ${(e as Error).message}`);
+    }
   };
 
   const handleUpdate = async () => {
     if (!editingAgent || !form.name.trim()) return;
-    await agentStore.update(editingAgent.id, {
-      name: form.name.trim(),
-      role: form.role.trim(),
-      personality: {
+    setFormError(null);
+    try {
+      await agentStore.update(editingAgent.id, {
         name: form.name.trim(),
-        traits: form.traits
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean),
-      },
-      capabilities: CAPABILITY_OPTIONS.map((c) => ({
-        ...c,
-        enabled: form.capabilities.includes(c.key),
-      })),
-      system_prompt: form.systemPrompt.trim() || undefined,
-      skills: form.skills.length > 0 ? form.skills : undefined,
-      llm_provider_id: form.llmProviderId || undefined,
-    });
-    setEditingAgent(null);
-    setForm(emptyForm);
-    refresh();
+        role: form.role.trim(),
+        personality: {
+          name: form.name.trim(),
+          traits: form.traits
+            .split(",")
+            .map((t) => t.trim())
+            .filter(Boolean),
+        },
+        capabilities: CAPABILITY_OPTIONS.map((c) => ({
+          ...c,
+          enabled: form.capabilities.includes(c.key),
+        })),
+        system_prompt: form.systemPrompt.trim() || undefined,
+        skills: form.skills.length > 0 ? form.skills : undefined,
+        llm_provider_id: form.llmProviderId || undefined,
+      });
+      setEditingAgent(null);
+      setForm(emptyForm);
+      refresh();
+    } catch (e) {
+      setFormError(`保存失败: ${(e as Error).message}`);
+    }
   };
 
   const handleDelete = async () => {
     if (!editingAgent) return;
-    await agentStore.remove(editingAgent.id);
-    setEditingAgent(null);
-    setForm(emptyForm);
-    refresh();
+    setFormError(null);
+    try {
+      await agentStore.remove(editingAgent.id);
+      setEditingAgent(null);
+      setForm(emptyForm);
+      refresh();
+    } catch (e) {
+      setFormError(`删除失败: ${(e as Error).message}`);
+    }
   };
 
   const handleDeleteConfirm = async () => {
     if (!editingAgent) return;
-    await agentStore.remove(editingAgent.id);
-    setShowDeleteConfirm(false);
-    setEditingAgent(null);
-    setForm(emptyForm);
-    refresh();
+    try {
+      await agentStore.remove(editingAgent.id);
+      setShowDeleteConfirm(false);
+      setEditingAgent(null);
+      setForm(emptyForm);
+      refresh();
+    } catch (e) {
+      setFormError(`删除失败: ${(e as Error).message}`);
+    }
   };
 
   const handleDeleteCancel = () => {
@@ -210,6 +231,7 @@ export default function DashboardPage() {
           <button
             onClick={() => {
               setForm(emptyForm);
+              setFormError(null);
               setShowCreate(true);
               loadProvidersForForm();
             }}
@@ -390,33 +412,42 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="flex gap-3 px-5 py-4 border-t border-surface-200 dark:border-surface-700 shrink-0">
-              {editingAgent && (
-                <button
-                  onClick={handleDelete}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 text-sm font-medium transition-colors"
-                >
-                  <Trash2 size={14} />
-                  删除
-                </button>
+            <div className="flex flex-col gap-3 px-5 py-4 border-t border-surface-200 dark:border-surface-700 shrink-0">
+              {formError && (
+                <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">
+                  <AlertTriangle size={14} />
+                  {formError}
+                </div>
               )}
-              <div className="flex-1" />
-              <button
-                onClick={() => {
-                  setShowCreate(false);
-                  setEditingAgent(null);
-                }}
-                className="px-4 py-2 rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800 text-sm font-medium transition-colors"
-              >
-                取消
-              </button>
-              <button
-                onClick={editingAgent ? handleUpdate : handleCreate}
-                disabled={!form.name.trim() || !form.role.trim()}
-                className="px-4 py-2 rounded-lg bg-orion-600 hover:bg-orion-700 disabled:opacity-40 text-white text-sm font-medium transition-colors"
-              >
-                {editingAgent ? "保存" : "创建"}
-              </button>
+              <div className="flex gap-3">
+                {editingAgent && (
+                  <button
+                    onClick={handleDelete}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 text-sm font-medium transition-colors"
+                  >
+                    <Trash2 size={14} />
+                    删除
+                  </button>
+                )}
+                <div className="flex-1" />
+                <button
+                  onClick={() => {
+                    setShowCreate(false);
+                    setEditingAgent(null);
+                    setFormError(null);
+                  }}
+                  className="px-4 py-2 rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800 text-sm font-medium transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={editingAgent ? handleUpdate : handleCreate}
+                  disabled={!form.name.trim() || !form.role.trim()}
+                  className="px-4 py-2 rounded-lg bg-orion-600 hover:bg-orion-700 disabled:opacity-40 text-white text-sm font-medium transition-colors"
+                >
+                  {editingAgent ? "保存" : "创建"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
