@@ -480,6 +480,16 @@ export default function ProvidersPage() {
           </div>
         </div>
       )}
+      {/* Delete Confirm Dialog */}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="删除 Provider"
+        description={`确定要删除 Provider「${deleteTarget?.name || ""}」吗？此操作不可撤销。`}
+        confirmText="删除"
+        destructive={true}
+        onConfirm={handleDeleteConfirm}
+        onCancel={handleDeleteCancel}
+      />
     </div>
   );
 }

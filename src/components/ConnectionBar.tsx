@@ -4,14 +4,24 @@ import rpc, { type ConnectionStatus } from "@/client/rpc";
 
 export default function ConnectionBar() {
   const [status, setStatus] = useState<ConnectionStatus>(rpc.status);
+  const [showConnected, setShowConnected] = useState(false);
 
   useEffect(() => {
-    const unsub = rpc.onStatusChange(setStatus);
+    const unsub = rpc.onStatusChange((s) => {
+      setStatus(s);
+      if (s === "connected") {
+        setShowConnected(true);
+        // Show "Connected" for 2s before fading out
+        setTimeout(() => setShowConnected(false), 2000);
+      } else {
+        setShowConnected(false);
+      }
+    });
     setStatus(rpc.status);
     return unsub;
   }, []);
 
-  if (status === "connected") return null;
+  if (status === "connected" && !showConnected) return null;
 
   const config = {
     disconnected: {
@@ -38,7 +48,7 @@ export default function ConnectionBar() {
 
   return (
     <div
-      className={`flex items-center justify-center gap-2 px-4 py-1.5 text-xs border-b ${className}`}
+      className={`flex items-center justify-center gap-2 px-4 py-1.5 text-xs border-b transition-opacity duration-300 ${className} ${status === "connected" && showConnected ? "opacity-100" : "opacity-100"}`}
     >
       <Icon
         size={12}
