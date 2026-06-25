@@ -187,7 +187,10 @@ export const agentStore = {
           payload.personality_name = patch.personality.name;
           payload.personality_traits = patch.personality.traits;
         }
-        await rpc.call("agent.update", payload);
+        const result = await rpc.call("agent.update", payload) as any;
+        if (result?.error) {
+          throw new Error(result.error);
+        }
       } catch (e) {
         console.warn("[agentStore] 后端更新 Agent 失败:", e);
         throw e; // 不再静默吞掉错误
