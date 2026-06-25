@@ -12,16 +12,16 @@ function formatNum(n: number): string {
 
 export default function AgentMetricsDisplay({ metrics, compact }: Props) {
   const items: { label: string; value: string; key: string }[] = [
-    { key: "tasks", label: "Tasks", value: formatNum(metrics.tasks) },
-    { key: "success", label: "Success", value: `${metrics.successRate}%` },
-    { key: "memory", label: "Memory", value: formatNum(metrics.memoryCount) },
+    { key: "tasks", label: "任务", value: formatNum(metrics.tasks) },
+    { key: "success", label: "成功率", value: `${metrics.successRate}%` },
+    { key: "memory", label: "记忆", value: formatNum(metrics.memoryCount) },
   ];
 
   if (!compact && metrics.cost) {
-    items.push({ key: "cost", label: "Cost", value: metrics.cost });
+    items.push({ key: "cost", label: "费用", value: metrics.cost });
   }
   if (!compact && metrics.savedTime) {
-    items.push({ key: "time", label: "Saved", value: metrics.savedTime });
+    items.push({ key: "time", label: "节省", value: metrics.savedTime });
   }
 
   return (

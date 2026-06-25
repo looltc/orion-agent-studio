@@ -1,9 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
-  MessageCircle,
-  History,
   ShieldCheck,
   Settings,
   Menu,
@@ -13,11 +11,10 @@ import {
 } from "lucide-react";
 import ErrorBoundary from "../src/components/ErrorBoundary";
 import ThemeToggle from "../src/components/agent/ThemeToggle";
+import rpc from "../src/client/rpc";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
-  { to: "/chat", icon: MessageCircle, label: "Chat" },
-  { to: "/history", icon: History, label: "History" },
   { to: "/audit", icon: ShieldCheck, label: "Audit" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ];
@@ -25,6 +22,11 @@ const navItems = [
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const navigate = useNavigate();
+
+  // 启动时自动连接 daemon
+  useEffect(() => {
+    rpc.connect().catch(() => {});
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem("orion_token");

@@ -163,7 +163,7 @@ export default function TasksPage() {
           ? {
               ...m,
               confirmResolved: true,
-              text: m.text + `\n→ ${answer === "approve" ? "Approved" : "Rejected"}`,
+              text: m.text + `\n→ ${answer === "approve" ? "已批准" : "已拒绝"}`,
             }
           : m
       )
@@ -191,7 +191,7 @@ export default function TasksPage() {
         {
           id: `a-${task.task_id}`,
           role: "agent",
-          text: "Thinking…",
+          text: "思考中…",
           taskId: task.task_id,
           status: "running",
           timestamp: Date.now(),
@@ -204,7 +204,7 @@ export default function TasksPage() {
         {
           id: `err-${Date.now()}`,
           role: "agent",
-          text: `Error: ${e?.message || e}`,
+              text: `错误: ${e?.message || e}`,
           status: "failed",
           timestamp: Date.now(),
           thoughts: [],
@@ -247,9 +247,9 @@ export default function TasksPage() {
     <div className="flex flex-col h-full max-w-3xl mx-auto">
       {/* Header */}
       <div className="h-12 flex items-center px-4 border-b border-surface-700 shrink-0">
-        <h1 className="text-sm font-medium text-surface-300">Orion Chat</h1>
+        <h1 className="text-sm font-medium text-surface-300">Orion 对话</h1>
         <span className="ml-auto text-xs text-surface-600">
-          {rpc.connected ? "Connected" : "Disconnected"}
+          {rpc.connected ? "已连接" : "未连接"}
         </span>
       </div>
 
@@ -261,10 +261,10 @@ export default function TasksPage() {
       >
         {messages.length === 0 && (
           <div className="text-center py-16">
-            <p className="text-surface-500 text-sm">Ask the agent to do something.</p>
+            <p className="text-surface-500 text-sm">让 Agent 帮你做点什么吧。</p>
             {!rpc.connected && (
               <p className="text-surface-600 text-xs mt-2">
-                Connect to Orion Runtime Daemon to start.
+                请连接 Orion Runtime Daemon 后开始。
               </p>
             )}
           </div>
@@ -310,15 +310,15 @@ export default function TasksPage() {
                       <div className="flex items-center gap-1.5 mt-2 text-xs text-surface-500">
                         <StatusIcon status={msg.status} />
                         <span className="font-mono">{msg.taskId.slice(0, 10)}</span>
-                        <span>
-                          {msg.status === "running"
-                            ? "Running…"
-                            : msg.status === "done"
-                            ? "Done"
-                            : msg.status === "failed"
-                            ? "Failed"
-                            : "Ready"}
-                        </span>
+                          <span>
+                            {msg.status === "running"
+                              ? "执行中…"
+                              : msg.status === "done"
+                              ? "已完成"
+                              : msg.status === "failed"
+                              ? "失败"
+                              : "就绪"}
+                          </span>
                       </div>
                     )}
                   </div>
@@ -361,7 +361,7 @@ export default function TasksPage() {
               }
             }}
             placeholder={
-              rpc.connected ? "Ask the agent…" : "Connect to daemon first…"
+              rpc.connected ? "输入指令…" : "请先连接 Daemon…"
             }
             disabled={inputDisabled}
             className="flex-1 bg-transparent text-sm text-white placeholder:text-surface-600 outline-none"
@@ -402,17 +402,17 @@ function ConfirmCard({
             onClick={() => onRespond("reject")}
             className="px-3 py-1.5 rounded-lg border border-red-800 text-red-400 hover:bg-red-900/20 text-xs font-medium"
           >
-            Reject
+            拒绝
           </button>
           <button
             onClick={() => onRespond("approve")}
             className="px-3 py-1.5 rounded-lg bg-orion-600 hover:bg-orion-700 text-white text-xs font-medium"
           >
-            Approve
+            批准
           </button>
         </div>
       ) : (
-        <p className="text-xs text-surface-500 mt-2">Responded</p>
+        <p className="text-xs text-surface-500 mt-2">已回复</p>
       )}
     </div>
   );

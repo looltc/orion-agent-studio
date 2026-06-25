@@ -5,9 +5,6 @@ import Layout from "./Layout";
 import LoginPage from "./pages/LoginPage";
 import DashboardPage from "../src/pages/DashboardPage";
 import AgentWorkspacePage from "../src/pages/AgentWorkspacePage";
-import TasksPage from "../src/pages/TasksPage";
-import TaskDetailPage from "../src/pages/TaskDetailPage";
-import HistoryPage from "../src/pages/HistoryPage";
 import AuditPage from "../src/pages/AuditPage";
 import SettingsPage from "../src/pages/SettingsPage";
 
@@ -39,9 +36,6 @@ export default function App() {
           >
             <Route path="/" element={<DashboardPage />} />
             <Route path="/agent/:agentId" element={<AgentWorkspacePage />} />
-            <Route path="/chat" element={<TasksPage />} />
-            <Route path="/task/:taskId" element={<TaskDetailPage />} />
-            <Route path="/history" element={<HistoryPage />} />
             <Route path="/audit" element={<AuditPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>

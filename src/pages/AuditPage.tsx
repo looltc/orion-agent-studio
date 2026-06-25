@@ -24,16 +24,21 @@ export default function AuditPage() {
   }, [taskFilter]);
 
   return (
-    <div className="p-6 max-w-5xl">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-semibold text-white">Audit Log</h1>
-          <p className="text-sm text-surface-500 mt-0.5">
-            View detailed audit trail for tasks
-          </p>
+    <div className="h-full flex flex-col">
+      {/* Header（固定不滚动） */}
+      <div className="shrink-0 px-6 pt-6 pb-4 max-w-5xl w-full mx-auto">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-semibold text-white">审计日志</h1>
+            <p className="text-sm text-surface-500 mt-0.5">
+              查看任务的详细审计记录
+            </p>
+          </div>
         </div>
       </div>
 
+      {/* 内容区（独立滚动） */}
+      <div className="flex-1 overflow-y-auto px-6 pb-6 max-w-5xl w-full mx-auto">
       {/* Task filter */}
       <div className="flex items-center gap-3 mb-6">
         <div className="relative flex-1 max-w-md">
@@ -46,7 +51,7 @@ export default function AuditPage() {
             value={taskFilter}
             onChange={(e) => setTaskFilter(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && loadLogs()}
-            placeholder="Enter task_id to load audit logs..."
+            placeholder="输入 task_id 加载审计日志..."
             className="w-full bg-surface-900 border border-surface-700 rounded-lg pl-9 pr-4 py-2 text-sm text-white placeholder:text-surface-600 outline-none focus:border-orion-600/50"
           />
         </div>
@@ -57,10 +62,10 @@ export default function AuditPage() {
         >
           {loading ? (
             <>
-              <Loader2 size={14} className="animate-spin" /> Loading…
+              <Loader2 size={14} className="animate-spin" /> 加载中…
             </>
           ) : (
-            "Load"
+            "加载"
           )}
         </button>
       </div>
@@ -70,29 +75,29 @@ export default function AuditPage() {
         <div className="text-center py-16">
           <ShieldCheck size={40} className="mx-auto text-surface-700 mb-3" />
           <p className="text-surface-500 text-sm">
-            Enter a task ID to view its audit trail.
+            输入任务 ID 以查看其审计记录。
           </p>
           <p className="text-surface-600 text-xs mt-1">
-            All tool calls, approvals, and task lifecycle events are recorded.
+            所有工具调用、审批和任务生命周期事件都会被记录。
           </p>
         </div>
       ) : events.length === 0 ? (
         <div className="text-center py-16">
           <Search size={40} className="mx-auto text-surface-700 mb-3" />
           <p className="text-surface-500 text-sm">
-            No audit logs found for "{taskFilter}".
+            未找到 "{taskFilter}" 的审计日志。
           </p>
           <p className="text-surface-600 text-xs mt-1">
-            Make sure the task ID is correct and the task has been executed.
+            请确认任务 ID 正确，且该任务已执行。
           </p>
         </div>
       ) : (
         <div className="space-y-1">
           <div className="grid grid-cols-[160px_1fr_auto] gap-3 px-3 py-2 text-xs font-medium text-surface-500 border-b border-surface-700">
-            <span>Time</span>
-            <span>Event</span>
+            <span>时间</span>
+            <span>事件</span>
             <span className="text-right text-surface-600">
-              {events.length} events
+              {events.length} 条事件
             </span>
           </div>
           {events.map((evt, i) => (
@@ -111,6 +116,8 @@ export default function AuditPage() {
           ))}
         </div>
       )}
+      </div>
+      {/* 内容区结束 */}
     </div>
   );
 }

@@ -29,58 +29,58 @@ export default function ApprovalDialog({ request, onRespond, onDismiss }: Approv
             <RiskIcon size={22} className={risk.color} />
           </div>
           <div>
-            <h3 className="font-semibold text-white">Approval Required</h3>
-            <p className={`text-xs font-mono ${risk.color}`}>{risk.label} RISK</p>
+            <h3 className="font-semibold text-white">需要审批</h3>
+            <p className={`text-xs font-mono ${risk.color}`}>{risk.label} 风险</p>
           </div>
         </div>
 
         {/* Body */}
         <div className="px-5 py-4 space-y-3">
           <div>
-            <span className="text-xs text-surface-500">Tool</span>
+              <span className="text-xs text-surface-500">工具</span>
             <p className="text-sm text-white font-mono">{request.tool}</p>
           </div>
           {request.reason && (
-            <div>
-              <span className="text-xs text-surface-500">Reason</span>
-              <p className="text-sm text-surface-300">{request.reason}</p>
-            </div>
-          )}
-          {Object.keys(request.arguments).length > 0 && (
-            <div>
-              <span className="text-xs text-surface-500">Arguments</span>
+                <div>
+                  <span className="text-xs text-surface-500">原因</span>
+                  <p className="text-sm text-surface-300">{request.reason}</p>
+                </div>
+              )}
+              {Object.keys(request.arguments).length > 0 && (
+                <div>
+                  <span className="text-xs text-surface-500">参数</span>
               <pre className="mt-1 text-xs bg-surface-950 rounded-md p-2 text-surface-300 max-h-32 overflow-auto">
                 {JSON.stringify(request.arguments, null, 2)}
               </pre>
             </div>
           )}
-          <div className="text-xs text-surface-600">
-            Task: {request.task_id} · ID: {request.approval_id.slice(0, 16)}
-          </div>
-        </div>
+              <div className="text-xs text-surface-600">
+                任务: {request.task_id} · ID: {request.approval_id.slice(0, 16)}
+              </div>
+            </div>
 
-        {/* Actions */}
-        <div className="flex gap-3 px-5 py-4 border-t border-surface-700">
-          <button
-            onClick={() => onRespond(request.approval_id, "reject", "rejected by user")}
-            className="flex-1 px-4 py-2 rounded-lg border border-red-800 text-red-400 hover:bg-red-900/20 text-sm font-medium transition-colors"
-          >
-            Reject
-          </button>
-          <button
-            onClick={() => onRespond(request.approval_id, "approve", "approved by user")}
-            className="flex-1 px-4 py-2 rounded-lg bg-orion-600 hover:bg-orion-700 text-white text-sm font-medium transition-colors"
-          >
-            Approve
-          </button>
-        </div>
+            {/* Actions */}
+            <div className="flex gap-3 px-5 py-4 border-t border-surface-700">
+              <button
+                onClick={() => onRespond(request.approval_id, "reject", "rejected by user")}
+                className="flex-1 px-4 py-2 rounded-lg border border-red-800 text-red-400 hover:bg-red-900/20 text-sm font-medium transition-colors"
+              >
+                拒绝
+              </button>
+              <button
+                onClick={() => onRespond(request.approval_id, "approve", "approved by user")}
+                className="flex-1 px-4 py-2 rounded-lg bg-orion-600 hover:bg-orion-700 text-white text-sm font-medium transition-colors"
+              >
+                批准
+              </button>
+            </div>
 
-        <button
-          onClick={onDismiss}
-          className="w-full px-5 py-2 text-xs text-surface-500 hover:text-surface-300 transition-colors"
-        >
-          Dismiss
-        </button>
+            <button
+              onClick={onDismiss}
+              className="w-full px-5 py-2 text-xs text-surface-500 hover:text-surface-300 transition-colors"
+            >
+              关闭
+            </button>
       </div>
     </div>
   );

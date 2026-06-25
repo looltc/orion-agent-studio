@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
-  ArrowLeft, Send, Loader2, ChevronDown,
+  ArrowLeft, Send, Loader2, ChevronDown, Trash2, X,
   Brain, CheckCircle2, XCircle, Clock, HelpCircle,
   ListTodo, Database, BarChart3, Settings, Monitor, Globe,
 } from "lucide-react";
@@ -39,14 +39,14 @@ function StatusIcon({ status }: { status?: string }) {
 }
 
 // ── localStorage helpers ──
-function loadChatHistory(agentId: string): ChatMessage[] {
+function loadChatHistory(agentId: string, sid: string): ChatMessage[] {
   try {
-    const raw = localStorage.getItem(`orion_chat_${agentId}`);
+    const raw = localStorage.getItem(`orion_chat_${agentId}_${sid}`);
     return raw ? JSON.parse(raw) : [];
   } catch { return []; }
 }
-function saveChatHistory(agentId: string, msgs: ChatMessage[]) {
-  try { localStorage.setItem(`orion_chat_${agentId}`, JSON.stringify(msgs.slice(-200))); } catch {}
+function saveChatHistory(agentId: string, sid: string, msgs: ChatMessage[]) {
+  try { localStorage.setItem(`orion_chat_${agentId}_${sid}`, JSON.stringify(msgs.slice(-200))); } catch {}
 }
 
 // ═══════════════════════════════════════════
@@ -57,7 +57,19 @@ export default function AgentWorkspacePage() {
   const navigate = useNavigate();
 
   const [agent, setAgent] = useState<Agent | null>(null);
+  const agentRef = useRef<Agent | null>(null);
+  // 保持 ref 和 state 同步
+  useEffect(() => { agentRef.current = agent; }, [agent]);
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("chat");
+
+  // ── Session ──
+  const [sessionId, setSessionId] = useState<string>(() => {
+    return `session-${Date.now()}`;
+  });
+
+  const newSession = () => {
+    setSessionId(`session-${Date.now()}`);
+  };
 
   // ── Chat state ──
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -74,12 +86,12 @@ export default function AgentWorkspacePage() {
   useEffect(() => {
     if (!agentId) return;
     agentStore.getById(agentId).then((a) => { if (a) setAgent(a); });
-    setMessages(loadChatHistory(agentId));
+    setMessages(loadChatHistory(agentId, sessionId));
   }, [agentId]);
 
   // Persist chat
   useEffect(() => {
-    if (agentId) saveChatHistory(agentId, messages);
+    if (agentId) saveChatHistory(agentId, sessionId, messages);
   }, [messages, agentId]);
 
   // ── Auto-scroll ──
@@ -180,10 +192,24 @@ export default function AgentWorkspacePage() {
   }, [poll]);
 
   // ── Send ──
+  // ── Skill chips ──
+  const [activeSkills, setActiveSkills] = useState<string[]>([]);
+
+  const toggleSkillChip = (skill: string) => {
+    setActiveSkills(prev => prev.includes(skill)
+      ? prev.filter(s => s !== skill)
+      : [...prev, skill]);
+  };
+
   const handleSend = async () => {
-    const text = input.trim();
+    let text = input.trim();
+    // 拼装 active skills 到消息前面
+    if (activeSkills.length > 0) {
+      text = `【使用技能：${activeSkills.join("、")}】\n${text}`;
+    }
     if (!text || sending || !rpc.connected) return;
     setInput("");
+    setActiveSkills([]);
     setSending(true);
     const userMsg: ChatMessage = {
       id: `u-${Date.now()}`,
@@ -195,13 +221,33 @@ export default function AgentWorkspacePage() {
     setMessages((prev) => [...prev, userMsg]);
 
     try {
-      const task = await rpc.createTask(text);
+      // 每次发送前从 localStorage 重新加载，确保拿到最新配置
+      const latest = agentId ? await agentStore.getById(agentId) : null;
+      const cur = latest || agentRef.current;
+      if (latest) { agentRef.current = latest; setAgent(latest); }
+
+      // 组装 personality 到 system_prompt
+      let fullPrompt = cur?.system_prompt || "";
+      if (cur?.personality?.traits && cur.personality.traits.length > 0) {
+        const traitText = cur.personality.traits.join("、");
+        fullPrompt = `${fullPrompt}\n性格特质：${traitText}。`;
+      }
+
+      console.log("[AgentWorkspace] sending task", { agentId, system_prompt: fullPrompt.slice(0, 50), skills: cur?.skills });
+      const task = await rpc.createTask(text, agentId, sessionId, {
+        system_prompt: fullPrompt || undefined,
+        skills: cur?.skills,
+        active_skills: activeSkills.length > 0 ? activeSkills : undefined,
+        llm_provider_id: cur?.llm_provider_id,
+      });
+      setActiveSkills([]);
+      console.log("[AgentWorkspace] task created", task.task_id);
       setMessages((prev) => [
         ...prev,
         {
           id: `a-${task.task_id}`,
           role: "agent",
-          text: "Thinking…",
+          text: "思考中…",
           taskId: task.task_id,
           status: "running",
           timestamp: Date.now(),
@@ -231,7 +277,7 @@ export default function AgentWorkspacePage() {
     setMessages((prev) =>
       prev.map((m) =>
         m.id === msgId
-          ? { ...m, confirmResolved: true, text: m.text + `\n→ ${answer === "approve" ? "Approved" : "Rejected"}` }
+          ? { ...m, confirmResolved: true, text: m.text + `\n→ ${answer === "approve" ? "已批准" : "已拒绝"}` }
           : m
       )
     );
@@ -253,12 +299,12 @@ export default function AgentWorkspacePage() {
   if (!agent) {
     return (
       <div className="p-6 flex items-center justify-center h-full">
-        <p className="text-surface-500">Agent not found.</p>
+        <p className="text-surface-500">未找到 Agent。</p>
       </div>
     );
   }
 
-  const inputDisabled = sending || !rpc.connected;
+  const inputDisabled = sending;
 
   return (
     <div className="flex h-full">
@@ -273,7 +319,7 @@ export default function AgentWorkspacePage() {
             <AgentStatusBadge status={agent.status.state} compact />
           </div>
           <span className="text-xs text-surface-400 dark:text-surface-600 truncate max-w-[160px]">
-            {rpc.connected ? "Connected" : "Disconnected"}
+            {rpc.connected ? "已连接" : "未连接"}
           </span>
         </div>
 
@@ -284,9 +330,9 @@ export default function AgentWorkspacePage() {
             <div ref={chatRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 py-4 space-y-4 relative">
               {messages.length === 0 && (
                 <div className="text-center py-16">
-                  <p className="text-surface-500 text-sm">Start a conversation with {agent.name}.</p>
+                  <p className="text-surface-500 text-sm">开始与 {agent.name} 对话吧。</p>
                   {!rpc.connected && (
-                    <p className="text-surface-600 text-xs mt-2">Connect to Orion Runtime Daemon to start.</p>
+                    <p className="text-surface-600 text-xs mt-2">请连接 Orion Runtime Daemon 后开始。</p>
                   )}
                 </div>
               )}
@@ -316,7 +362,7 @@ export default function AgentWorkspacePage() {
                               <StatusIcon status={msg.status} />
                               <span className="font-mono">{msg.taskId.slice(0, 10)}</span>
                               <span>
-                                {msg.status === "running" ? "Running…" : msg.status === "done" ? "Done" : msg.status === "failed" ? "Failed" : "Ready"}
+                                {msg.status === "running" ? "执行中…" : msg.status === "done" ? "已完成" : msg.status === "failed" ? "失败" : "就绪"}
                               </span>
                             </div>
                           )}
@@ -339,10 +385,30 @@ export default function AgentWorkspacePage() {
 
             {/* Input */}
             <div className="p-3 border-t border-surface-200 dark:border-surface-700 shrink-0">
+              {/* Skill chips */}
+              {agent?.skills && agent.skills.length > 0 && (
+                <div className="max-w-3xl mx-auto flex flex-wrap gap-1.5 mb-2">
+                  {agent.skills.map(skill => {
+                    const active = activeSkills.includes(skill);
+                    return (
+                      <button key={skill}
+                        onClick={() => toggleSkillChip(skill)}
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-pill text-xs font-medium transition-colors ${
+                          active
+                            ? "bg-orion-600 text-white"
+                            : "bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700"
+                        }`}>
+                        @{skill}
+                        {active && <X size={10} />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
               <div className="max-w-3xl mx-auto flex items-center gap-2 bg-surface-50 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded-xl px-3 py-2 focus-within:border-orion-500/50">
                 <input type="text" value={input} onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }}}
-                  placeholder={rpc.connected ? `Message ${agent.name}…` : "Connect to daemon first…"}
+                  placeholder={rpc.connected ? `给 ${agent.name} 发送消息…` : "请先连接 Daemon…"}
                   disabled={inputDisabled}
                   className="flex-1 bg-transparent text-sm text-surface-900 dark:text-white placeholder:text-surface-400 dark:placeholder:text-surface-600 outline-none" />
                 <button onClick={handleSend} disabled={!input.trim() || inputDisabled}
@@ -356,11 +422,16 @@ export default function AgentWorkspacePage() {
           </>
         )}
 
-        {activeTab === "tasks" && <TasksPanel agent={agent} />}
-        {activeTab === "memory" && <InfoPanel icon={Brain} title="Memory" agent={agent} description="Long-term, episodic, semantic, and working memory for this agent." />}
-        {activeTab === "browser" && <InfoPanel icon={Globe} title="Browser" agent={agent} description="Browser automation — navigate, click, extract content from web pages. Powered by Playwright." />}
-        {activeTab === "desktop" && <InfoPanel icon={Monitor} title="Desktop" agent={agent} description="Desktop automation — control applications and interact with the OS." />}
-        {activeTab === "knowledge" && <InfoPanel icon={Database} title="Knowledge" agent={agent} description="Document loading and retrieval. Search through indexed knowledge bases." />}
+        {activeTab === "tasks" && <TasksPanel agent={agent} onSelectSession={(sid: string) => {
+          const msgs = loadChatHistory(agentId!, sid);
+          setSessionId(sid);
+          setMessages(msgs);
+          setActiveTab("chat");
+        }} />}
+        {activeTab === "memory" && <InfoPanel icon={Brain} title="记忆" agent={agent} description="为该 Agent 提供长期记忆、情景记忆、语义记忆和工作记忆。" />}
+        {activeTab === "browser" && <InfoPanel icon={Globe} title="浏览器" agent={agent} description="浏览器自动化 — 导航、点击、从网页提取内容。基于 Playwright。" />}
+        {activeTab === "desktop" && <InfoPanel icon={Monitor} title="桌面" agent={agent} description="桌面自动化 — 控制应用程序并与操作系统交互。" />}
+        {activeTab === "knowledge" && <InfoPanel icon={Database} title="知识库" agent={agent} description="文档加载与检索。在已索引的知识库中进行搜索。" />}
         {activeTab === "analytics" && <AnalyticsPanel agent={agent} />}
         {activeTab === "settings" && <AgentSettingsPanel agent={agent} onUpdated={(a) => setAgent(a)} />}
       </div>
@@ -378,12 +449,12 @@ function ConfirmCard({ msg, onRespond }: { msg: ChatMessage; onRespond: (answer:
       {!msg.confirmResolved ? (
         <div className="flex gap-2 mt-3">
           <button onClick={() => onRespond("reject")}
-            className="px-3 py-1.5 rounded-lg border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 text-xs font-medium">Reject</button>
+            className="px-3 py-1.5 rounded-lg border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 text-xs font-medium">拒绝</button>
           <button onClick={() => onRespond("approve")}
-            className="px-3 py-1.5 rounded-lg bg-orion-600 hover:bg-orion-700 text-white text-xs font-medium">Approve</button>
+            className="px-3 py-1.5 rounded-lg bg-orion-600 hover:bg-orion-700 text-white text-xs font-medium">批准</button>
         </div>
       ) : (
-        <p className="text-xs text-surface-500 mt-2">Responded</p>
+        <p className="text-xs text-surface-500 mt-2">已回复</p>
       )}
     </div>
   );
@@ -408,14 +479,43 @@ function InfoPanel({ icon: Icon, title, agent, description }: { icon: typeof Bra
   );
 }
 
-function TasksPanel({ agent }: { agent: Agent }) {
-  const [tasks, setTasks] = useState<ProtocolTask[]>([]);
+function TasksPanel({ agent, onSelectSession }: { agent: Agent; onSelectSession: (sessionId: string) => void }) {
+  const [sessions, setSessions] = useState<{ id: string; title: string; date: string; count: number }[]>([]);
 
   useEffect(() => {
-    rpc.listTasks().then(setTasks).catch(() => {});
-    const iv = setInterval(() => { rpc.listTasks().then(setTasks).catch(() => {}); }, 3000);
-    return () => clearInterval(iv);
-  }, []);
+    loadSessions();
+  }, [agent.id]);
+
+  const loadSessions = () => {
+    const list: { id: string; title: string; date: string; count: number }[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(`orion_chat_${agent.id}_`)) {
+        try {
+          const msgs = JSON.parse(localStorage.getItem(key) || "[]");
+          const first = msgs.find((m: any) => m.role === "user");
+          if (first) {
+            list.push({
+              id: key,
+              title: (first.text || "").slice(0, 60),
+              date: new Date(first.timestamp).toLocaleString(),
+              count: msgs.length,
+            });
+          }
+        } catch {}
+      }
+    }
+    list.sort((a, b) => b.date.localeCompare(a.date));
+    setSessions(list);
+  };
+
+  const handleDelete = (key: string, sid: string) => {
+    if (!confirm(`确定删除该会话吗？`)) return;
+    localStorage.removeItem(key);
+    // 同步删除 daemon 磁盘文件
+    try { rpc.call("session.delete", { session_id: sid }); } catch {}
+    loadSessions();
+  };
 
   return (
     <div className="flex-1 overflow-y-auto p-6">
@@ -424,28 +524,37 @@ function TasksPanel({ agent }: { agent: Agent }) {
           <ListTodo size={20} className="text-orion-600 dark:text-orion-400" />
         </div>
         <div>
-          <h2 className="text-lg font-semibold text-surface-900 dark:text-white">Tasks</h2>
-          <p className="text-xs text-surface-500">{agent.name} · {tasks.length} tasks</p>
+          <h2 className="text-lg font-semibold text-surface-900 dark:text-white">会话</h2>
+          <p className="text-xs text-surface-500">{agent.name} · 共 {sessions.length} 个会话</p>
         </div>
+        <button onClick={() => {
+          const sid = `session-${Date.now()}`;
+          onSelectSession(sid);
+        }}
+          className="ml-auto px-3 py-1.5 rounded-lg bg-orion-600 hover:bg-orion-700 text-white text-xs font-medium transition-colors">
+          + 新建
+        </button>
       </div>
-      {tasks.length === 0 ? (
-        <p className="text-sm text-surface-500">No tasks yet. Send a message in Chat to create one.</p>
+      {sessions.length === 0 ? (
+        <p className="text-sm text-surface-500">还没有会话。和 {agent.name} 对话即可创建一个。</p>
       ) : (
         <div className="space-y-2">
-          {tasks.map((t) => (
-            <div key={t.task_id} className="p-3 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900">
-              <p className="text-sm text-surface-900 dark:text-white truncate">{t.goal}</p>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-xs font-mono text-surface-500">{t.task_id.slice(0, 12)}</span>
-                <span className={`text-xs px-1.5 py-0.5 rounded-pill ${
-                  t.status === "done" ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400" :
-                  t.status === "running" ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400" :
-                  t.status === "failed" ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400" :
-                  "bg-surface-100 dark:bg-surface-700 text-surface-600 dark:text-surface-400"
-                }`}>{t.status}</span>
+          {sessions.map((s) => {
+            const sid = s.id.replace(`orion_chat_${agent.id}_`, "");
+            return (
+            <div key={s.id} className="group flex items-center gap-3 p-3 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 hover:border-orion-400/40 cursor-pointer transition-colors">
+              <div onClick={() => onSelectSession(sid)} className="flex-1 min-w-0">
+                <p className="text-sm text-surface-900 dark:text-white truncate">{s.title}</p>
+                <p className="text-xs text-surface-500 mt-1">{s.date} · {s.count} 条消息</p>
               </div>
+              <button onClick={(e) => { e.stopPropagation(); handleDelete(s.id, sid); }}
+                className="p-1 rounded text-surface-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                title="删除会话">
+                <Trash2 size={14} />
+              </button>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -460,15 +569,15 @@ function AnalyticsPanel({ agent }: { agent: Agent }) {
           <BarChart3 size={20} className="text-orion-600 dark:text-orion-400" />
         </div>
         <div>
-          <h2 className="text-lg font-semibold text-surface-900 dark:text-white">Analytics</h2>
+          <h2 className="text-lg font-semibold text-surface-900 dark:text-white">分析</h2>
           <p className="text-xs text-surface-500">{agent.name}</p>
         </div>
       </div>
       <div className="grid grid-cols-2 gap-4">
-        <MetricCard label="Tasks" value={String(agent.metrics.tasks)} />
-        <MetricCard label="Success Rate" value={`${agent.metrics.successRate}%`} />
-        <MetricCard label="Memory" value={String(agent.metrics.memoryCount)} />
-        <MetricCard label="Cost" value={agent.metrics.cost || "—"} />
+        <MetricCard label="任务" value={String(agent.metrics.tasks)} />
+        <MetricCard label="成功率" value={`${agent.metrics.successRate}%`} />
+        <MetricCard label="记忆" value={String(agent.metrics.memoryCount)} />
+        <MetricCard label="费用" value={agent.metrics.cost || "—"} />
       </div>
     </div>
   );
@@ -483,7 +592,7 @@ function MetricCard({ label, value }: { label: string; value: string }) {
   );
 }
 
-const AVAILABLE_SKILLS = ["generate-daily-report", "summarize-meeting"];
+const FALLBACK_SKILLS = ["generate-daily-report", "summarize-meeting"];
 
 function AgentSettingsPanel({ agent, onUpdated }: { agent: Agent; onUpdated: (a: Agent) => void }) {
   const [name, setName] = useState(agent.name);
@@ -496,6 +605,9 @@ function AgentSettingsPanel({ agent, onUpdated }: { agent: Agent; onUpdated: (a:
   const [providers, setProviders] = useState<LLMProvider[]>([]);
   const [providersLoading, setProvidersLoading] = useState(true);
   const [saved, setSaved] = useState(false);
+  const [availableSkills, setAvailableSkills] = useState<{name: string; description: string}[]>(
+    FALLBACK_SKILLS.map((s) => ({ name: s, description: "" }))
+  );
 
   useEffect(() => {
     const loadProviders = async () => {
@@ -512,6 +624,10 @@ function AgentSettingsPanel({ agent, onUpdated }: { agent: Agent; onUpdated: (a:
       }
     };
     loadProviders();
+    // 从 daemon 加载可用技能列表
+    rpc.listSkills().then((s) => {
+      if (s.length > 0) setAvailableSkills(s);
+    }).catch(() => {});
   }, []);
 
   const toggleCap = (key: string) => setCaps((prev) => prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]);
@@ -536,24 +652,24 @@ function AgentSettingsPanel({ agent, onUpdated }: { agent: Agent; onUpdated: (a:
           <Settings size={20} className="text-orion-600 dark:text-orion-400" />
         </div>
         <div>
-          <h2 className="text-lg font-semibold text-surface-900 dark:text-white">Agent Settings</h2>
+          <h2 className="text-lg font-semibold text-surface-900 dark:text-white">Agent 设置</h2>
           <p className="text-xs text-surface-500">{agent.name}</p>
         </div>
       </div>
       <div className="space-y-4">
-        <div><label className="text-xs text-surface-500 mb-1 block">Name</label>
+        <div><label className="text-xs text-surface-500 mb-1 block">名称</label>
           <input type="text" value={name} onChange={(e) => setName(e.target.value)}
             className="w-full bg-surface-50 dark:bg-surface-950 border border-surface-200 dark:border-surface-700 rounded-lg px-3 py-2 text-sm text-surface-900 dark:text-white outline-none focus:border-orion-500/50" />
         </div>
-        <div><label className="text-xs text-surface-500 mb-1 block">Role</label>
+        <div><label className="text-xs text-surface-500 mb-1 block">角色</label>
           <input type="text" value={role} onChange={(e) => setRole(e.target.value)}
             className="w-full bg-surface-50 dark:bg-surface-950 border border-surface-200 dark:border-surface-700 rounded-lg px-3 py-2 text-sm text-surface-900 dark:text-white outline-none focus:border-orion-500/50" />
         </div>
-        <div><label className="text-xs text-surface-500 mb-1 block">Traits</label>
+        <div><label className="text-xs text-surface-500 mb-1 block">性格特质</label>
           <input type="text" value={traits} onChange={(e) => setTraits(e.target.value)}
-            className="w-full bg-surface-50 dark:bg-surface-950 border border-surface-200 dark:border-surface-700 rounded-lg px-3 py-2 text-sm text-surface-900 dark:text-white outline-none focus:border-orion-500/50" placeholder="precise, structured" />
+            className="w-full bg-surface-50 dark:bg-surface-950 border border-surface-200 dark:border-surface-700 rounded-lg px-3 py-2 text-sm text-surface-900 dark:text-white outline-none focus:border-orion-500/50" placeholder="精确、有条理" />
         </div>
-        <div><label className="text-xs text-surface-500 mb-2 block">Capabilities</label>
+        <div><label className="text-xs text-surface-500 mb-2 block">能力</label>
           <div className="flex flex-wrap gap-2">
             {CAPABILITY_OPTIONS.map((c) => (
               <button key={c.key} onClick={() => toggleCap(c.key)}
@@ -562,25 +678,31 @@ function AgentSettingsPanel({ agent, onUpdated }: { agent: Agent; onUpdated: (a:
           </div>
         </div>
         {/* System Prompt */}
-        <div><label className="text-xs text-surface-500 mb-1 block">System Prompt</label>
+        <div><label className="text-xs text-surface-500 mb-1 block">系统提示词</label>
           <textarea value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)}
             rows={6}
             className="w-full bg-surface-50 dark:bg-surface-950 border border-surface-200 dark:border-surface-700 rounded-lg px-3 py-2 text-sm text-surface-900 dark:text-white outline-none focus:border-orion-500/50 resize-vertical"
             placeholder="你是一个资深软件架构师。擅长系统设计与代码审查。用简洁精确的中文回复。" />
         </div>
         {/* Skills */}
-        <div><label className="text-xs text-surface-500 mb-2 block">Skills</label>
+        <div><label className="text-xs text-surface-500 mb-2 block">技能</label>
           <div className="flex flex-wrap gap-2">
-            {AVAILABLE_SKILLS.map((skill) => (
-              <button key={skill} onClick={() => toggleSkill(skill)}
-                className={`px-3 py-1.5 rounded-pill text-xs font-medium transition-colors ${skills.includes(skill) ? "bg-orion-600 text-white" : "bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700"}`}>{skill}</button>
+            {availableSkills.map((skill) => (
+              <button key={skill.name} onClick={() => toggleSkill(skill.name)}
+                title={skill.description || skill.name}
+                className={`px-3 py-1.5 rounded-pill text-xs font-medium transition-colors flex items-center gap-1 max-w-[200px] ${skills.includes(skill.name) ? "bg-orion-600 text-white" : "bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700"}`}>
+                <span className="font-medium truncate">{skill.name}</span>
+                {skill.description && (
+                  <span className="text-[10px] opacity-60 truncate hidden sm:inline">{skill.description}</span>
+                )}
+              </button>
             ))}
           </div>
         </div>
         {/* LLM Provider */}
-        <div><label className="text-xs text-surface-500 mb-1 block">LLM Provider</label>
+        <div><label className="text-xs text-surface-500 mb-1 block">LLM 提供者</label>
           {providersLoading ? (
-            <p className="text-xs text-surface-400">Loading providers…</p>
+            <p className="text-xs text-surface-400">加载中…</p>
           ) : (
             <select value={llmProviderId} onChange={(e) => setLlmProviderId(e.target.value)}
               className="w-full bg-surface-50 dark:bg-surface-950 border border-surface-200 dark:border-surface-700 rounded-lg px-3 py-2 text-sm text-surface-900 dark:text-white outline-none focus:border-orion-500/50">
@@ -592,7 +714,7 @@ function AgentSettingsPanel({ agent, onUpdated }: { agent: Agent; onUpdated: (a:
           )}
         </div>
         <button onClick={handleSave} disabled={!name.trim()}
-          className="w-full py-2 rounded-lg bg-orion-600 hover:bg-orion-700 disabled:opacity-40 text-white text-sm font-medium transition-colors">{saved ? "Saved ✓" : "Save Changes"}</button>
+          className="w-full py-2 rounded-lg bg-orion-600 hover:bg-orion-700 disabled:opacity-40 text-white text-sm font-medium transition-colors">{saved ? "已保存 ✓" : "保存修改"}</button>
       </div>
     </div>
   );

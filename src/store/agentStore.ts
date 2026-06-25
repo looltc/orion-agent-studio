@@ -1,6 +1,6 @@
-// Agent 数据持久化层
-// Desktop: Electron IPC → 本地文件
-// Web: localStorage
+// Agent & Provider 数据持久化层
+// 主存储：localStorage（前端权威源）
+// daemon 在线时同步到后端 agents.json / providers.json
 
 import type { Agent } from "@/types/agent";
 import type { LLMProvider } from "@/types/provider";
@@ -39,7 +39,20 @@ function localSave(agents: Agent[]): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(agents));
 }
 
-// ── 默认 Agent 模板 ──
+function localLoadProviders(): LLMProvider[] {
+  try {
+    const raw = localStorage.getItem(PROVIDER_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function localSaveProviders(providers: LLMProvider[]): void {
+  localStorage.setItem(PROVIDER_STORAGE_KEY, JSON.stringify(providers));
+}
+
+// ── 默认值 ──
 export const DEFAULT_AGENTS: Agent[] = [
   {
     id: "orion-architect",
@@ -62,6 +75,18 @@ export const DEFAULT_AGENTS: Agent[] = [
   },
 ];
 
+export const DEFAULT_PROVIDERS: LLMProvider[] = [
+  {
+    id: "provider-default-lmstudio",
+    name: "LM Studio (Local)",
+    base_url: "http://localhost:1234/v1",
+    api_key: "local-1234567890abcdef",
+    model: "local-model",
+    is_default: true,
+    created_at: new Date().toISOString(),
+  },
+];
+
 export const CAPABILITY_OPTIONS = [
   { key: "browser", label: "Browser" },
   { key: "desktop", label: "Desktop" },
@@ -74,20 +99,20 @@ export const CAPABILITY_OPTIONS = [
 // ── 统一 API ──
 export const agentStore = {
   async load(): Promise<Agent[]> {
-    if (isElectron()) {
-      const agents = await electronLoad();
-      return agents.length > 0 ? agents : DEFAULT_AGENTS;
-    }
+    // localStorage 为权威源
     const agents = localLoad();
-    return agents.length > 0 ? agents : DEFAULT_AGENTS;
+    if (agents.length > 0) return agents;
+    // 首次运行：尝试 Electron IPC
+    if (isElectron()) {
+      const fromIpc = await electronLoad();
+      if (fromIpc.length > 0) return fromIpc;
+    }
+    return DEFAULT_AGENTS;
   },
 
   async save(agents: Agent[]): Promise<void> {
-    if (isElectron()) {
-      await electronSave(agents);
-    } else {
-      localSave(agents);
-    }
+    localSave(agents);
+    if (isElectron()) await electronSave(agents);
   },
 
   async create(partial: Omit<Agent, "id" | "createdAt" | "metrics" | "status"> & {
@@ -137,22 +162,22 @@ export const agentStore = {
     return agents.find((a) => a.id === id) || null;
   },
 
-  // ── Provider CRUD ──
+  // ── Provider CRUD（localStorage 为权威源）──
   async loadProviders(): Promise<LLMProvider[]> {
-    try {
-      const raw = localStorage.getItem(PROVIDER_STORAGE_KEY);
-      return raw ? JSON.parse(raw) : [];
-    } catch {
-      return [];
-    }
+    const providers = localLoadProviders();
+    return providers.length > 0 ? providers : DEFAULT_PROVIDERS;
   },
 
   async saveProviders(providers: LLMProvider[]): Promise<void> {
-    localStorage.setItem(PROVIDER_STORAGE_KEY, JSON.stringify(providers));
+    localSaveProviders(providers);
   },
 
   async createProvider(data: Partial<LLMProvider>): Promise<LLMProvider> {
     const providers = await this.loadProviders();
+    // 重新计算默认值
+    if (data.is_default) {
+      for (const p of providers) p.is_default = false;
+    }
     const provider: LLMProvider = {
       id: `provider-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       name: data.name || "",
@@ -171,6 +196,9 @@ export const agentStore = {
     const providers = await this.loadProviders();
     const idx = providers.findIndex((p) => p.id === id);
     if (idx === -1) return null;
+    if (data.is_default) {
+      for (const p of providers) p.is_default = false;
+    }
     providers[idx] = { ...providers[idx], ...data, id: providers[idx].id };
     await this.saveProviders(providers);
     return providers[idx];

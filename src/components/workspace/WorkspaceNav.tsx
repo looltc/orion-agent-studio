@@ -16,14 +16,14 @@ interface Props {
 }
 
 const TABS: { key: WorkspaceTab; label: string; icon: typeof MessageCircle }[] = [
-  { key: "chat", label: "Chat", icon: MessageCircle },
-  { key: "tasks", label: "Tasks", icon: ListTodo },
-  { key: "memory", label: "Memory", icon: Brain },
-  { key: "browser", label: "Browser", icon: Globe },
-  { key: "desktop", label: "Desktop", icon: Monitor },
-  { key: "knowledge", label: "Knowledge", icon: Database },
-  { key: "analytics", label: "Analytics", icon: BarChart3 },
-  { key: "settings", label: "Settings", icon: Settings },
+  { key: "chat", label: "对话", icon: MessageCircle },
+  { key: "tasks", label: "会话", icon: ListTodo },
+  { key: "memory", label: "记忆", icon: Brain },
+  { key: "browser", label: "浏览器", icon: Globe },
+  { key: "desktop", label: "桌面", icon: Monitor },
+  { key: "knowledge", label: "知识库", icon: Database },
+  { key: "analytics", label: "分析", icon: BarChart3 },
+  { key: "settings", label: "设置", icon: Settings },
 ];
 
 export default function WorkspaceNav({ activeTab, onTabChange }: Props) {

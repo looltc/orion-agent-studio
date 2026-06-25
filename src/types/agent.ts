@@ -59,7 +59,7 @@ export interface Agent {
   personality: AgentPersonality;
   organization?: AgentOrganization;
   system_prompt?: string;
-  skills?: string[];
+  skills?: string[]; // Skill name list (from Skill Registry)
   llm_provider_id?: string;
 }
 

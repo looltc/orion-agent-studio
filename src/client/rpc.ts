@@ -246,8 +246,16 @@ class RpcClient {
   }
 
   // ── 高级 API ──
-  async createTask(goal: string): Promise<ProtocolTask> {
-    const result = (await this.call("task.create", { goal })) as RpcResult<ProtocolTask>;
+  async createTask(goal: string, agentId?: string, sessionId?: string, agentConfig?: { system_prompt?: string; skills?: string[]; active_skills?: string[]; llm_provider_id?: string }): Promise<ProtocolTask> {
+    const params: Record<string, unknown> = { goal };
+    if (agentId) params.agent_id = agentId;
+    if (sessionId) params.session_id = sessionId;
+    if (agentConfig?.system_prompt) params.system_prompt = agentConfig.system_prompt;
+    if (agentConfig?.skills) params.skills = agentConfig.skills;
+    if (agentConfig?.active_skills) params.active_skills = agentConfig.active_skills;
+    if (agentConfig?.llm_provider_id) params.llm_provider_id = agentConfig.llm_provider_id;
+    console.log("[RPC] task.create params:", JSON.stringify({ goal: goal.slice(0, 40), agent_id: params.agent_id, skills: params.skills, system_prompt: (params.system_prompt as string||"").slice(0, 40) }));
+    const result = (await this.call("task.create", params)) as RpcResult<ProtocolTask>;
     return result.task!;
   }
 
@@ -333,6 +341,20 @@ class RpcClient {
   async testProvider(id: string): Promise<{ ok: boolean; message: string; latency_ms: number }> {
     const result = (await this.call("provider.test", { id })) as any;
     return result;
+  }
+
+  async testProviderDirect(params: { base_url: string; api_key: string; model: string }): Promise<{ ok: boolean; message: string; latency_ms: number }> {
+    const result = (await this.call("provider.test_direct", params)) as any;
+    return result;
+  }
+
+  async syncProviders(providers: LLMProvider[]): Promise<void> {
+    await this.call("provider.sync", { providers });
+  }
+
+  async listSkills(): Promise<{ name: string; description: string }[]> {
+    const result = (await this.call("skill.list", {})) as any;
+    return result.skills || [];
   }
 
   // ── Agent Config RPC ──

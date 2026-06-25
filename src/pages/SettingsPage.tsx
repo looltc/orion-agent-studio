@@ -51,20 +51,25 @@ export default function SettingsPage() {
   };
 
   const statusConfig = {
-    connected: { label: "Online", className: "bg-green-900/30 text-green-400", dot: "bg-green-400" },
-    connecting: { label: "Connecting…", className: "bg-yellow-900/30 text-yellow-400", dot: "bg-yellow-400 animate-pulse" },
-    disconnected: { label: "Offline", className: "bg-red-900/30 text-red-400", dot: "bg-red-400" },
+    connected: { label: "在线", className: "bg-green-900/30 text-green-400", dot: "bg-green-400" },
+    connecting: { label: "连接中…", className: "bg-yellow-900/30 text-yellow-400", dot: "bg-yellow-400 animate-pulse" },
+    disconnected: { label: "离线", className: "bg-red-900/30 text-red-400", dot: "bg-red-400" },
   };
   const sc = statusConfig[connectionStatus];
 
   return (
-    <div className="p-6 max-w-2xl">
-      <h1 className="text-xl font-semibold text-white mb-6">Settings</h1>
+    <div className="h-full flex flex-col">
+      {/* Header（固定不滚动） */}
+      <div className="shrink-0 px-6 pt-6 pb-4 max-w-2xl w-full mx-auto">
+        <h1 className="text-xl font-semibold text-white">设置</h1>
+      </div>
 
+      {/* 内容区（独立滚动） */}
+      <div className="flex-1 overflow-y-auto px-6 pb-6 max-w-2xl w-full mx-auto">
       {/* Connection */}
       <section className="mb-8">
         <h2 className="text-sm font-medium text-surface-400 mb-4 flex items-center gap-2">
-          <Plug size={16} /> Connection
+          <Plug size={16} /> 连接
         </h2>
         <div className="bg-surface-900 border border-surface-700 rounded-xl p-4 space-y-4">
           <div className="flex items-center justify-between">
@@ -72,8 +77,8 @@ export default function SettingsPage() {
               <p className="text-sm text-white">Runtime Daemon</p>
               <p className="text-xs text-surface-500">
                 {connectionStatus === "connected"
-                  ? `Connected to ${daemonHost}:${daemonPort}`
-                  : "Not connected"}
+                  ? `已连接到 ${daemonHost}:${daemonPort}`
+                  : "未连接"}
               </p>
             </div>
             <span
@@ -86,7 +91,7 @@ export default function SettingsPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-surface-500">Host</label>
+              <label className="text-xs text-surface-500">主机地址（Host）</label>
               <input
                 type="text"
                 value={daemonHost}
@@ -95,7 +100,7 @@ export default function SettingsPage() {
               />
             </div>
             <div>
-              <label className="text-xs text-surface-500">Port</label>
+              <label className="text-xs text-surface-500">端口（Port）</label>
               <input
                 type="text"
                 value={daemonPort}
@@ -115,7 +120,7 @@ export default function SettingsPage() {
             ) : (
               <Server size={14} />
             )}
-            {reconnecting ? "Connecting…" : "Reconnect"}
+            {reconnecting ? "连接中…" : "重新连接"}
           </button>
         </div>
       </section>
@@ -123,7 +128,7 @@ export default function SettingsPage() {
       {/* Daemon Info */}
       <section className="mb-8">
         <h2 className="text-sm font-medium text-surface-400 mb-4 flex items-center gap-2">
-          <Globe size={16} /> Daemon Info
+          <Globe size={16} /> Daemon 信息
         </h2>
         <div className="bg-surface-900 border border-surface-700 rounded-xl p-4">
           {Object.keys(daemonInfo).length > 0 ? (
@@ -133,8 +138,8 @@ export default function SettingsPage() {
           ) : (
             <p className="text-xs text-surface-600">
               {connectionStatus === "connected"
-                ? "No daemon info available."
-                : "Connect to a daemon to view its status."}
+                ? "暂无 Daemon 信息。"
+                : "连接到 Daemon 后可查看其状态。"}
             </p>
           )}
         </div>
@@ -142,7 +147,7 @@ export default function SettingsPage() {
 
       {/* About */}
       <section>
-        <h2 className="text-sm font-medium text-surface-400 mb-4">About</h2>
+        <h2 className="text-sm font-medium text-surface-400 mb-4">关于</h2>
         <div className="bg-surface-900 border border-surface-700 rounded-xl p-4">
           <div className="flex items-center gap-3 mb-2">
             <div className="w-8 h-8 rounded-lg bg-orion-600 flex items-center justify-center">
@@ -151,16 +156,18 @@ export default function SettingsPage() {
             <div>
               <p className="text-sm font-medium text-white">Orion Studio</p>
               <p className="text-xs text-surface-500">
-                v0.1.0 — Phase 2 Desktop Client
+                v0.1.0 — 第二阶段桌面客户端
               </p>
             </div>
           </div>
           <p className="text-xs text-surface-600 mt-3">
-            Built with Electron + React + TypeScript. Connects to Orion Agent
-            Runtime Daemon via JSON-RPC WebSocket protocol.
+            基于 Electron + React + TypeScript 构建，通过 JSON-RPC WebSocket
+            协议连接 Orion Agent Runtime Daemon。
           </p>
         </div>
       </section>
+      </div>
+      {/* 内容区结束 */}
     </div>
   );
 }

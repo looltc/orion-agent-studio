@@ -6,42 +6,42 @@ const config: Record<
   { label: string; Icon: typeof Clock; className: string; dotClass: string }
 > = {
   idle: {
-    label: "Idle",
+    label: "空闲",
     Icon: Clock,
     className:
       "bg-surface-200 text-surface-600 dark:bg-surface-800 dark:text-surface-400",
     dotClass: "bg-surface-400 dark:bg-surface-500",
   },
   thinking: {
-    label: "Thinking",
+    label: "思考中",
     Icon: Loader2,
     className:
       "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
     dotClass: "bg-blue-500 animate-pulse",
   },
   working: {
-    label: "Working",
+    label: "工作中",
     Icon: Loader2,
     className:
       "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
     dotClass: "bg-emerald-500 animate-pulse",
   },
   waiting: {
-    label: "Waiting",
+    label: "等待中",
     Icon: Clock,
     className:
       "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
     dotClass: "bg-amber-500",
   },
   need_approval: {
-    label: "Need Approval",
+    label: "待审批",
     Icon: HelpCircle,
     className:
       "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
     dotClass: "bg-purple-500 animate-pulse",
   },
   error: {
-    label: "Error",
+    label: "错误",
     Icon: AlertCircle,
     className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
     dotClass: "bg-red-500",

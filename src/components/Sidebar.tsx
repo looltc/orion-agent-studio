@@ -1,7 +1,5 @@
 import {
   LayoutDashboard,
-  MessageCircle,
-  History,
   ShieldCheck,
   Settings,
   Activity,
@@ -12,12 +10,10 @@ import { NavLink } from "react-router-dom";
 import ThemeToggle from "@/components/agent/ThemeToggle";
 
 const navItems = [
-  { to: "/", icon: LayoutDashboard, label: "Dashboard" },
-  { to: "/chat", icon: MessageCircle, label: "Chat" },
-  { to: "/history", icon: History, label: "History" },
-  { to: "/audit", icon: ShieldCheck, label: "Audit" },
-  { to: "/providers", icon: Server, label: "Providers" },
-  { to: "/settings", icon: Settings, label: "Settings" },
+  { to: "/", icon: LayoutDashboard, label: "仪表盘" },
+  { to: "/audit", icon: ShieldCheck, label: "审计日志" },
+  { to: "/providers", icon: Server, label: "LLM 提供者" },
+  { to: "/settings", icon: Settings, label: "设置" },
 ];
 
 export default function Sidebar() {

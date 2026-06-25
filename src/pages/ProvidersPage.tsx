@@ -38,25 +38,22 @@ export default function ProvidersPage() {
 
   const loadProviders = useCallback(async () => {
     setError(null);
-    try {
-      // Try RPC first, fall back to localStorage
-      if (rpc.connected) {
-        const list = await rpc.listProviders();
-        setProviders(list);
-      } else {
-        const list = await agentStore.loadProviders();
-        setProviders(list);
-      }
-    } catch {
-      // Fallback to localStorage
-      try {
-        const list = await agentStore.loadProviders();
-        setProviders(list);
-      } catch {
-        setProviders([]);
-      }
+    // localStorage 是权威源
+    const list = await agentStore.loadProviders();
+    setProviders(list);
+    // daemon 在线时自动同步
+    if (rpc.connected && list.length > 0) {
+      try { await rpc.syncProviders(list); } catch {}
     }
   }, []);
+
+  const syncToDaemon = async () => {
+    if (!rpc.connected) return;
+    try {
+      const list = await agentStore.loadProviders();
+      await rpc.syncProviders(list);
+    } catch {}
+  };
 
   useEffect(() => {
     loadProviders();
@@ -64,9 +61,9 @@ export default function ProvidersPage() {
 
   const validate = (): boolean => {
     const errors: Record<string, string> = {};
-    if (!form.name.trim()) errors.name = "Name is required";
-    if (!form.base_url.trim()) errors.base_url = "Base URL is required";
-    if (!form.model.trim()) errors.model = "Model is required";
+    if (!form.name.trim()) errors.name = "请输入名称";
+    if (!form.base_url.trim()) errors.base_url = "请输入 Base URL";
+    if (!form.model.trim()) errors.model = "请输入 Model";
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -104,27 +101,20 @@ export default function ProvidersPage() {
         is_default: form.is_default,
       };
 
-      if (rpc.connected) {
-        if (editing) {
-          await rpc.updateProvider(editing.id, data);
-        } else {
-          await rpc.createProvider(data);
-        }
+      // 始终先存 localStorage（权威源）
+      if (editing) {
+        await agentStore.updateProvider(editing.id, data);
       } else {
-        // localStorage fallback
-        if (editing) {
-          await agentStore.updateProvider(editing.id, data);
-        } else {
-          await agentStore.createProvider(data);
-        }
+        await agentStore.createProvider(data);
       }
 
       setShowDialog(false);
       setEditing(null);
       setForm(emptyForm);
       await loadProviders();
+      await syncToDaemon();
     } catch (e: any) {
-      setError(e?.message || "Failed to save provider");
+      setError(e?.message || "保存 Provider 失败");
     }
   };
 
@@ -132,14 +122,11 @@ export default function ProvidersPage() {
     setDeleting(provider.id);
     setError(null);
     try {
-      if (rpc.connected) {
-        await rpc.deleteProvider(provider.id);
-      } else {
-        await agentStore.deleteProvider(provider.id);
-      }
+      await agentStore.deleteProvider(provider.id);
       await loadProviders();
+      await syncToDaemon();
     } catch (e: any) {
-      setError(e?.message || "Failed to delete provider");
+      setError(e?.message || "删除 Provider 失败");
     } finally {
       setDeleting(null);
     }
@@ -149,24 +136,30 @@ export default function ProvidersPage() {
     setTesting(provider.id);
     setTestResult(null);
     setError(null);
+
+    if (!rpc.connected) {
+      setTestResult({
+        providerId: provider.id,
+        ok: false,
+        message: "未连接 Daemon — 请启动 'orion serve' 后刷新",
+        latency_ms: 0,
+      });
+      setTesting(null);
+      return;
+    }
+
     try {
-      if (rpc.connected) {
-        const result = await rpc.testProvider(provider.id);
-        setTestResult({ providerId: provider.id, ...result });
-      } else {
-        // Simulate a test for localStorage-stored providers
-        setTestResult({
-          providerId: provider.id,
-          ok: false,
-          message: "Daemon not connected — cannot test provider",
-          latency_ms: 0,
-        });
-      }
+      const result = await rpc.testProviderDirect({
+        base_url: provider.base_url,
+        api_key: provider.api_key,
+        model: provider.model,
+      });
+      setTestResult({ providerId: provider.id, ...result });
     } catch (e: any) {
       setTestResult({
         providerId: provider.id,
         ok: false,
-        message: e?.message || "Test failed",
+        message: e?.message || "测试失败",
         latency_ms: 0,
       });
     } finally {
@@ -175,39 +168,43 @@ export default function ProvidersPage() {
   };
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-semibold text-surface-900 dark:text-white">
-            LLM Providers
-          </h1>
-          <p className="text-sm text-surface-500 mt-0.5">
-            {providers.length} provider{providers.length !== 1 ? "s" : ""} configured
-          </p>
-        </div>
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-orion-600 hover:bg-orion-700 text-white text-sm font-medium transition-colors"
-        >
-          <Plus size={16} />
-          Add Provider
-        </button>
-      </div>
-
-      {/* Error banner */}
-      {error && (
-        <div className="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm">
-          {error}
+    <div className="h-full flex flex-col">
+      {/* Header（固定不滚动） */}
+      <div className="shrink-0 px-6 pt-6 pb-4 max-w-4xl w-full mx-auto">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-semibold text-surface-900 dark:text-white">
+              LLM 提供者
+            </h1>
+            <p className="text-sm text-surface-500 mt-0.5">
+              已配置 {providers.length} 个 Provider
+            </p>
+          </div>
           <button
-            onClick={() => setError(null)}
-            className="ml-2 underline hover:no-underline"
+            onClick={openCreate}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-orion-600 hover:bg-orion-700 text-white text-sm font-medium transition-colors"
           >
-            Dismiss
+            <Plus size={16} />
+            添加 Provider
           </button>
         </div>
-      )}
 
+        {/* Error banner */}
+        {error && (
+          <div className="mt-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm">
+            {error}
+            <button
+              onClick={() => setError(null)}
+              className="ml-2 underline hover:no-underline"
+            >
+              关闭
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* 内容区（独立滚动） */}
+      <div className="flex-1 overflow-y-auto px-6 pb-6 max-w-4xl w-full mx-auto">
       {/* Provider list */}
       {providers.length === 0 ? (
         <div className="text-center py-20">
@@ -215,14 +212,14 @@ export default function ProvidersPage() {
             <Server size={28} className="text-surface-400" />
           </div>
           <p className="text-surface-500 text-sm">
-            No providers configured. Add your first LLM provider.
+            还没有配置 Provider，添加你的第一个 LLM Provider。
           </p>
           <button
             onClick={openCreate}
             className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800 text-sm font-medium transition-colors"
           >
             <Plus size={16} />
-            Add Provider
+            添加 Provider
           </button>
         </div>
       ) : (
@@ -247,7 +244,7 @@ export default function ProvidersPage() {
                     {p.is_default && (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-pill bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[10px] font-medium">
                         <Star size={10} />
-                        Default
+                        默认
                       </span>
                     )}
                   </div>
@@ -291,7 +288,7 @@ export default function ProvidersPage() {
                     onClick={() => handleTest(p)}
                     disabled={testing === p.id}
                     className="p-1.5 rounded-lg text-surface-400 hover:text-orion-600 dark:hover:text-orion-400 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
-                    title="Test Connection"
+                    title="测试连接"
                   >
                     <Zap
                       size={16}
@@ -301,7 +298,7 @@ export default function ProvidersPage() {
                   <button
                     onClick={() => openEdit(p)}
                     className="p-1.5 rounded-lg text-surface-400 hover:text-orion-600 dark:hover:text-orion-400 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
-                    title="Edit"
+                    title="编辑"
                   >
                     <Edit3 size={16} />
                   </button>
@@ -309,7 +306,7 @@ export default function ProvidersPage() {
                     onClick={() => handleDelete(p)}
                     disabled={deleting === p.id}
                     className="p-1.5 rounded-lg text-surface-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                    title="Delete"
+                    title="删除"
                   >
                     <Trash2 size={16} />
                   </button>
@@ -319,6 +316,8 @@ export default function ProvidersPage() {
           ))}
         </div>
       )}
+      </div>
+      {/* 内容区结束 */}
 
       {/* Create / Edit Dialog */}
       {showDialog && (
@@ -326,7 +325,7 @@ export default function ProvidersPage() {
           <div className="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded-xl w-full max-w-md mx-4 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="px-5 py-4 border-b border-surface-200 dark:border-surface-700">
               <h3 className="font-semibold text-surface-900 dark:text-white">
-                {editing ? "Edit Provider" : "Add Provider"}
+                {editing ? "编辑 Provider" : "添加 Provider"}
               </h3>
             </div>
 
@@ -422,24 +421,21 @@ export default function ProvidersPage() {
               {/* Default toggle */}
               <div className="flex items-center justify-between">
                 <label className="text-xs text-surface-500">
-                  Set as default provider
+                  设为默认 Provider
                 </label>
                 <button
                   onClick={() =>
                     setForm({ ...form, is_default: !form.is_default })
                   }
-                  className={`relative w-10 h-5 rounded-full transition-colors ${
+                  className={`relative w-11 h-6 rounded-full transition-colors ${
                     form.is_default
                       ? "bg-orion-600"
                       : "bg-surface-300 dark:bg-surface-600"
                   }`}
                 >
                   <span
-                    className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
-                      form.is_default
-                        ? "translate-x-[22px]"
-                        : "translate-x-[2px]"
-                    }`}
+                    className="absolute top-1/2 -translate-y-1/2 h-5 w-5 rounded-full bg-white shadow transition-all duration-200"
+                    style={{ left: form.is_default ? "calc(100% - 22px)" : "2px" }}
                   />
                 </button>
               </div>
@@ -455,13 +451,13 @@ export default function ProvidersPage() {
                 }}
                 className="px-4 py-2 rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800 text-sm font-medium transition-colors"
               >
-                Cancel
+                取消
               </button>
               <button
                 onClick={handleSave}
                 className="px-4 py-2 rounded-lg bg-orion-600 hover:bg-orion-700 text-white text-sm font-medium transition-colors"
               >
-                {editing ? "Save" : "Create"}
+                {editing ? "保存" : "创建"}
               </button>
             </div>
           </div>
