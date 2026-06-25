@@ -185,8 +185,10 @@ export default function DashboardPage() {
       <div className="shrink-0 px-6 pt-6 pb-4 max-w-6xl w-full mx-auto">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-semibold text-surface-900 dark:text-white">Agent 团队</h1>
-            <p className="text-sm text-surface-500 mt-0.5">
+            <h1 className="text-2xl font-extrabold text-surface-900 dark:text-white mb-1">
+              Agent 团队
+            </h1>
+            <p className="text-sm text-surface-500 dark:text-surface-400">
               {agents.length} 个 Agent · {workingCount} 个活跃
             </p>
           </div>
