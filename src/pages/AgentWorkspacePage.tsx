@@ -69,6 +69,10 @@ export default function AgentWorkspacePage() {
   });
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
+  // ── Task control ──
+  const [runningTaskId, setRunningTaskId] = useState<string | null>(null);
+  const [taskPaused, setTaskPaused] = useState(false);
+
   const openClearConfirm = () => {
     setShowClearConfirm(true);
   };
@@ -174,10 +178,23 @@ export default function AgentWorkspacePage() {
   const poll = useCallback(async () => {
     try {
       const ts = await rpc.listTasks();
+      // Track running/paused task for control buttons
+      const active = ts.find((t: any) => t.status === "running" || t.status === "ready");
+      const paused = ts.find((t: any) => t.status === "paused");
+      if (active && !paused) {
+        setRunningTaskId(active.task_id);
+        setTaskPaused(false);
+      } else if (paused) {
+        setRunningTaskId(paused.task_id);
+        setTaskPaused(true);
+      } else {
+        setRunningTaskId(null);
+        setTaskPaused(false);
+      }
       const ids = new Set(messages.filter((m) => m.taskId).map((m) => m.taskId));
       for (const t of ts) {
         if (!ids.has(t.task_id)) continue;
-        if (t.status === "done" || t.status === "failed") {
+        if (t.status === "done" || t.status === "failed" || t.status === "cancelled") {
           setMessages((prev) =>
             prev.map((m) =>
               m.taskId === t.task_id
@@ -187,11 +204,18 @@ export default function AgentWorkspacePage() {
                     text:
                       t.status === "done"
                         ? t.result_summary || "(no output)"
+                        : t.status === "cancelled"
+                        ? "任务已取消。"
                         : `Failed: ${t.error || "unknown"}`,
                   }
                 : m
             )
           );
+          // Clear running task on completion
+          if (t.status !== "running" && t.status !== "ready" && t.status !== "paused") {
+            setRunningTaskId(null);
+            setTaskPaused(false);
+          }
         }
       }
     } catch {}
@@ -279,6 +303,37 @@ export default function AgentWorkspacePage() {
       ]);
     } finally {
       setSending(false);
+    }
+  };
+
+  const handlePause = async () => {
+    if (!runningTaskId) return;
+    try {
+      await rpc.pauseTask(runningTaskId);
+      setTaskPaused(true);
+    } catch (e: any) {
+      console.error("Pause failed:", e);
+    }
+  };
+
+  const handleResume = async () => {
+    if (!runningTaskId) return;
+    try {
+      await rpc.resumeTask(runningTaskId);
+      setTaskPaused(false);
+    } catch (e: any) {
+      console.error("Resume failed:", e);
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!runningTaskId) return;
+    try {
+      await rpc.cancelTask(runningTaskId);
+      setRunningTaskId(null);
+      setTaskPaused(false);
+    } catch (e: any) {
+      console.error("Cancel failed:", e);
     }
   };
 
@@ -414,6 +469,29 @@ export default function AgentWorkspacePage() {
                       </button>
                     );
                   })}
+                </div>
+              )}
+              {/* Task control buttons (pause/resume/cancel) */}
+              {runningTaskId && (
+                <div className="max-w-3xl mx-auto flex items-center gap-2 mb-2">
+                  {taskPaused ? (
+                    <>
+                      <span className="text-xs text-amber-500 dark:text-amber-400 font-medium">已暂停</span>
+                      <button onClick={handleResume}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orion-600 hover:bg-orion-700 text-white text-xs font-medium transition-colors">
+                        <Play size={12} /> 继续
+                      </button>
+                    </>
+                  ) : (
+                    <button onClick={handlePause}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800 text-xs font-medium transition-colors">
+                      <Loader2 size={12} /> 暂停
+                    </button>
+                  )}
+                  <button onClick={handleCancel}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 text-xs font-medium transition-colors">
+                    <X size={12} /> 取消
+                  </button>
                 </div>
               )}
               <div className="max-w-3xl mx-auto flex items-center gap-2 bg-surface-50 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded-xl px-3 py-2 focus-within:border-orion-500/50">
@@ -616,6 +694,7 @@ function AgentSettingsPanel({ agent, onUpdated }: { agent: Agent; onUpdated: (a:
   const [providers, setProviders] = useState<LLMProvider[]>([]);
   const [providersLoading, setProvidersLoading] = useState(true);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [availableSkills, setAvailableSkills] = useState<{name: string; description: string}[]>(
     FALLBACK_SKILLS.map((s) => ({ name: s, description: "" }))
   );
@@ -645,15 +724,21 @@ function AgentSettingsPanel({ agent, onUpdated }: { agent: Agent; onUpdated: (a:
   const toggleSkill = (skill: string) => setSkills((prev) => prev.includes(skill) ? prev.filter((s) => s !== skill) : [...prev, skill]);
 
   const handleSave = async () => {
-    const updated = await agentStore.update(agent.id, {
-      name: name.trim(), role: role.trim(),
-      personality: { name: name.trim(), traits: traits.split(",").map((t) => t.trim()).filter(Boolean) },
-      capabilities: CAPABILITY_OPTIONS.map((c) => ({ ...c, enabled: caps.includes(c.key) })),
-      system_prompt: systemPrompt.trim() || undefined,
-      skills: skills.length > 0 ? skills : undefined,
-      llm_provider_id: llmProviderId || undefined,
-    });
-    if (updated) { onUpdated(updated); setSaved(true); setTimeout(() => setSaved(false), 2000); }
+    try {
+      const updated = await agentStore.update(agent.id, {
+        name: name.trim(), role: role.trim(),
+        personality: { name: name.trim(), traits: traits.split(",").map((t) => t.trim()).filter(Boolean) },
+        capabilities: CAPABILITY_OPTIONS.map((c) => ({ ...c, enabled: caps.includes(c.key) })),
+        system_prompt: systemPrompt.trim() || undefined,
+        skills: skills.length > 0 ? skills : undefined,
+        llm_provider_id: llmProviderId || undefined,
+      });
+      if (updated) { onUpdated(updated); setSaved(true); setTimeout(() => setSaved(false), 2000); }
+    } catch (e: any) {
+      console.error("保存 Agent 失败:", e);
+      setSaveError(e?.message || "保存失败，请检查 Daemon 连接后重试");
+      setTimeout(() => setSaveError(null), 5000);
+    }
   };
 
   return (
@@ -724,6 +809,11 @@ function AgentSettingsPanel({ agent, onUpdated }: { agent: Agent; onUpdated: (a:
             </select>
           )}
         </div>
+        {saveError && (
+          <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-xs">
+            {saveError}
+          </div>
+        )}
         <button onClick={handleSave} disabled={!name.trim()}
           className="w-full py-2 rounded-lg bg-orion-600 hover:bg-orion-700 disabled:opacity-40 text-white text-sm font-medium transition-colors">{saved ? "已保存 ✓" : "保存修改"}</button>
       </div>
