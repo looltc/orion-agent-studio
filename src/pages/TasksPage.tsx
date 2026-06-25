@@ -12,8 +12,8 @@ import type { ProtocolTask, ApprovalRequest } from "@/types/protocol";
 import rpc from "@/client/rpc";
 import ApprovalDialog from "@/components/ApprovalDialog";
 import CodeDiffView from "@/components/CodeDiffView";
+import ThoughtCard, { type ThinkEntry } from "@/components/ThoughtCard";
 
-interface ThinkEntry { iteration: number; thought: string; action: string; tool?: string; args?: Record<string,unknown>; answer?: string; }
 interface Message { id: string; role: "user"|"agent"|"confirm"; text: string; taskId?: string; status?: string; timestamp: number; thoughts: ThinkEntry[]; confirmQid?: string; confirmResolved?: boolean; }
 
 const TOOL_LABELS: Record<string,string>={add:"Calculate",mul:"Calculate",sub:"Calculate",div:"Calculate",browser_open:"Open Browser",browser_navigate:"Navigate",browser_click:"Click",browser_type:"Type",browser_scroll:"Scroll",browser_snapshot:"Snapshot",browser_get_page_text:"Extract Text",browser_extract_results:"Extract Results",browser_press_key:"Press Key",browser_evaluate_js:"Execute JS",browser_wait:"Wait",browser_go_back:"Go Back",browser_close:"Close Browser",knowledge_search:"Search Knowledge",human_confirm:"Confirm",code_read:"Read Code",code_search:"Search Code",code_search_symbols:"Find Symbol",code_apply_patch:"Edit Code",code_create_file:"Create File",code_lint:"Lint",code_run_tests:"Run Tests",code_project_structure:"Project Structure",code_get_dependencies:"Dependencies"};
@@ -32,8 +32,6 @@ function codeChangeOf(e: ThinkEntry): { tool: string; path: string; operations?:
   return null;
 }
 
-function ThoughtCard({thoughts,expanded,onToggle}:{thoughts:ThinkEntry[];expanded:boolean;onToggle:()=>void}){if(!thoughts.length)return null;const l=thoughts[thoughts.length-1];return(<div className="mt-2 border border-surface-700 rounded-lg overflow-hidden"><button onClick={onToggle} className="w-full flex items-center gap-2 px-3 py-1.5 bg-surface-800/50 hover:bg-surface-800 text-xs"><Brain size={12} className="text-orion-400 shrink-0"/><span className="flex-1 text-left text-surface-400 truncate">{expanded?`Steps (${thoughts.length})`:`Step #${l.iteration} · ${sl(l)}`}</span><span className="text-surface-500 truncate max-w-[180px] hidden sm:inline">{l.thought?l.thought.slice(0,50)+(l.thought.length>50?"…":""):ds(l).slice(0,50)}</span>{expanded?<ChevronUp size={12}/>:<ChevronDown size={12}/>}</button>{expanded&&<div className="divide-y divide-surface-700 max-h-80 overflow-y-auto">{thoughts.map((e,i)=>{const f=e.action==="finish";return(<div key={i} className="px-3 py-2 text-xs"><div className="flex items-center gap-2 mb-1"><span className="text-surface-600 font-mono w-8 shrink-0">#{e.iteration}</span><span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${f?"bg-purple-900/30 text-purple-400":"bg-surface-700 text-surface-300"}`}>{sl(e)}</span></div><p className="text-surface-400 leading-relaxed whitespace-pre-wrap ml-10">{ds(e)}</p></div>)})}</div>}</div>);}
-import ThoughtCard, { type ThinkEntry } from "@/components/ThoughtCard";
 
 interface Message {
   id: string;
