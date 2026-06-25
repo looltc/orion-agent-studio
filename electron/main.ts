@@ -1,8 +1,40 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
+import fs from "node:fs";
 
 let mainWindow: BrowserWindow | null = null;
 
+// ── 数据目录 ──
+const DATA_DIR = path.join(app.getPath("userData"), "data");
+function ensureDataDir() {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+// ── Agent 持久化 ──
+const AGENTS_FILE = path.join(DATA_DIR, "agents.json");
+
+function loadAgents(): unknown[] {
+  ensureDataDir();
+  try {
+    if (fs.existsSync(AGENTS_FILE)) {
+      return JSON.parse(fs.readFileSync(AGENTS_FILE, "utf-8"));
+    }
+  } catch (e) {
+    console.error("Failed to load agents:", e);
+  }
+  return [];
+}
+
+function saveAgents(agents: unknown[]) {
+  ensureDataDir();
+  try {
+    fs.writeFileSync(AGENTS_FILE, JSON.stringify(agents, null, 2), "utf-8");
+  } catch (e) {
+    console.error("Failed to save agents:", e);
+  }
+}
+
+// ── 窗口创建 ──
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -19,31 +51,33 @@ function createWindow() {
     },
   });
 
-  if (process.env.VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
-    mainWindow.webContents.openDevTools({ mode: "detach" });
+  // Dev: 连接 Vite dev server；Prod: 加载打包文件
+  const isDev = process.argv.includes("--dev") || !app.isPackaged;
+  if (isDev) {
+    mainWindow.loadURL("http://localhost:5173");
   } else {
     mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
   }
-
-  mainWindow.on("closed", () => {
-    mainWindow = null;
-  });
 }
 
-// ---- IPC handlers ----
+// ── IPC Handlers ──
+ipcMain.handle("agents:list", async () => {
+  return loadAgents();
+});
 
-// 审批响应：渲染进程 → 主进程 → 可转发到 WebSocket
-ipcMain.handle("approval:respond", async (_event, data: {
-  approvalId: string;
-  action: "approve" | "reject";
-  reason: string;
-}) => {
-  // 此处可通过 WebSocket 转发到 Daemon（或由渲染进程直连）
+ipcMain.handle("agents:save", async (_event, agents: unknown[]) => {
+  saveAgents(agents);
   return { ok: true };
 });
 
-// 截图请求
+ipcMain.handle("agents:load", async () => {
+  return loadAgents();
+});
+
+ipcMain.handle("approval:respond", async () => {
+  return { ok: true };
+});
+
 ipcMain.handle("desktop:screenshot", async () => {
   if (mainWindow) {
     const image = await mainWindow.webContents.capturePage();
@@ -52,6 +86,7 @@ ipcMain.handle("desktop:screenshot", async () => {
   return null;
 });
 
+// ── App 生命周期 ──
 app.whenReady().then(() => {
   createWindow();
 

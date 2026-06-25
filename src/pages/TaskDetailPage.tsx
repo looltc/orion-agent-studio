@@ -66,7 +66,7 @@ export default function TaskDetailPage() {
   if (!task) {
     return (
       <div className="p-6">
-        <p className="text-surface-500">Task not found.</p>
+        <p className="text-surface-500">未找到任务。</p>
       </div>
     );
   }
@@ -96,7 +96,7 @@ export default function TaskDetailPage() {
               onClick={handlePause}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-yellow-800 text-yellow-400 hover:bg-yellow-900/20 text-xs font-medium"
             >
-              <Pause size={14} /> Pause
+              <Pause size={14} /> 暂停
             </button>
           )}
           {task.status === "paused" && (
@@ -104,7 +104,7 @@ export default function TaskDetailPage() {
               onClick={handleResume}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-green-800 text-green-400 hover:bg-green-900/20 text-xs font-medium"
             >
-              <Play size={14} /> Resume
+              <Play size={14} /> 继续
             </button>
           )}
           {(task.status === "running" || task.status === "paused" || task.status === "ready") && (
@@ -112,7 +112,7 @@ export default function TaskDetailPage() {
               onClick={handleCancel}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-800 text-red-400 hover:bg-red-900/20 text-xs font-medium"
             >
-              <Square size={14} /> Cancel
+              <Square size={14} /> 取消
             </button>
           )}
         </div>
@@ -120,11 +120,11 @@ export default function TaskDetailPage() {
 
       {/* Info Grid */}
       <div className="grid grid-cols-4 gap-3 mb-6">
-        <InfoCard label="Steps" value={String(task.iterations)} />
-        <InfoCard label="Priority" value={String(task.priority)} />
-        <InfoCard label="Created" value={new Date(task.created_at).toLocaleString()} />
+        <InfoCard label="步骤" value={String(task.iterations)} />
+        <InfoCard label="优先级" value={String(task.priority)} />
+        <InfoCard label="创建时间" value={new Date(task.created_at).toLocaleString()} />
         <InfoCard
-          label="Result"
+          label="结果"
           value={task.result_summary || task.error || "—"}
           highlight={task.status === "done"}
         />
@@ -133,13 +133,13 @@ export default function TaskDetailPage() {
       {/* Result */}
       {task.result_summary && (
         <div className="mb-6 p-4 bg-green-900/10 border border-green-900/30 rounded-lg">
-          <p className="text-xs text-surface-500 mb-1">Result</p>
+          <p className="text-xs text-surface-500 mb-1">结果</p>
           <p className="text-sm text-green-300">{task.result_summary}</p>
         </div>
       )}
       {task.error && (
         <div className="mb-6 p-4 bg-red-900/10 border border-red-900/30 rounded-lg">
-          <p className="text-xs text-surface-500 mb-1">Error</p>
+          <p className="text-xs text-surface-500 mb-1">错误</p>
           <p className="text-sm text-red-300">{task.error}</p>
         </div>
       )}
@@ -147,7 +147,7 @@ export default function TaskDetailPage() {
       {/* Timeline */}
       <div className="mb-4">
         <h2 className="text-sm font-medium text-surface-400 mb-3">
-          Execution Timeline ({events.length} events)
+          执行时间线（共 {events.length} 个事件）
         </h2>
         <StepTimeline events={events} />
       </div>
