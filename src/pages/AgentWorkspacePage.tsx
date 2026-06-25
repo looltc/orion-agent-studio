@@ -694,6 +694,7 @@ function AgentSettingsPanel({ agent, onUpdated }: { agent: Agent; onUpdated: (a:
   const [providers, setProviders] = useState<LLMProvider[]>([]);
   const [providersLoading, setProvidersLoading] = useState(true);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [availableSkills, setAvailableSkills] = useState<{name: string; description: string}[]>(
     FALLBACK_SKILLS.map((s) => ({ name: s, description: "" }))
   );
@@ -723,15 +724,21 @@ function AgentSettingsPanel({ agent, onUpdated }: { agent: Agent; onUpdated: (a:
   const toggleSkill = (skill: string) => setSkills((prev) => prev.includes(skill) ? prev.filter((s) => s !== skill) : [...prev, skill]);
 
   const handleSave = async () => {
-    const updated = await agentStore.update(agent.id, {
-      name: name.trim(), role: role.trim(),
-      personality: { name: name.trim(), traits: traits.split(",").map((t) => t.trim()).filter(Boolean) },
-      capabilities: CAPABILITY_OPTIONS.map((c) => ({ ...c, enabled: caps.includes(c.key) })),
-      system_prompt: systemPrompt.trim() || undefined,
-      skills: skills.length > 0 ? skills : undefined,
-      llm_provider_id: llmProviderId || undefined,
-    });
-    if (updated) { onUpdated(updated); setSaved(true); setTimeout(() => setSaved(false), 2000); }
+    try {
+      const updated = await agentStore.update(agent.id, {
+        name: name.trim(), role: role.trim(),
+        personality: { name: name.trim(), traits: traits.split(",").map((t) => t.trim()).filter(Boolean) },
+        capabilities: CAPABILITY_OPTIONS.map((c) => ({ ...c, enabled: caps.includes(c.key) })),
+        system_prompt: systemPrompt.trim() || undefined,
+        skills: skills.length > 0 ? skills : undefined,
+        llm_provider_id: llmProviderId || undefined,
+      });
+      if (updated) { onUpdated(updated); setSaved(true); setTimeout(() => setSaved(false), 2000); }
+    } catch (e: any) {
+      console.error("保存 Agent 失败:", e);
+      setSaveError(e?.message || "保存失败，请检查 Daemon 连接后重试");
+      setTimeout(() => setSaveError(null), 5000);
+    }
   };
 
   return (
@@ -802,6 +809,11 @@ function AgentSettingsPanel({ agent, onUpdated }: { agent: Agent; onUpdated: (a:
             </select>
           )}
         </div>
+        {saveError && (
+          <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-xs">
+            {saveError}
+          </div>
+        )}
         <button onClick={handleSave} disabled={!name.trim()}
           className="w-full py-2 rounded-lg bg-orion-600 hover:bg-orion-700 disabled:opacity-40 text-white text-sm font-medium transition-colors">{saved ? "已保存 ✓" : "保存修改"}</button>
       </div>

@@ -104,7 +104,7 @@ export const agentStore = {
   async load(): Promise<Agent[]> {
     try {
       if (rpc.connected) {
-        const result = await rpc.call("agent_config.list", {}) as any;
+        const result = await rpc.call("agent.list", {}) as any;
         // 后端返回 { agents: [...] }
         const agents = result.agents || [];
         localCacheSave(agents);
@@ -123,7 +123,7 @@ export const agentStore = {
     return DEFAULT_AGENTS;
   },
 
-  // 创建 Agent — 调用后端 agent_config.create
+  // 创建 Agent — 调用后端 agent.create
   // 后端期望：name, role, system_prompt 等独立字段（非嵌套 config 对象）
   async create(partial: Omit<Agent, "id" | "createdAt" | "metrics" | "status"> & {
     system_prompt?: string;
@@ -144,7 +144,7 @@ export const agentStore = {
     // 优先写入后端
     if (rpc.connected) {
       try {
-        await rpc.call("agent_config.create", {
+        await rpc.call("agent.create", {
           name: agent.name,
           role: agent.role,
           system_prompt: agent.system_prompt || "",
@@ -167,7 +167,7 @@ export const agentStore = {
     return agent;
   },
 
-  // 更新 Agent — 调用后端 agent_config.update
+  // 更新 Agent — 调用后端 agent.update
   // 后端期望：id + 各字段独立（params.pop("id") 取出 id，其余作为参数）
   async update(id: string, patch: Partial<Agent> & {
     system_prompt?: string;
@@ -187,7 +187,7 @@ export const agentStore = {
           payload.personality_name = patch.personality.name;
           payload.personality_traits = patch.personality.traits;
         }
-        await rpc.call("agent_config.update", payload);
+        await rpc.call("agent.update", payload);
       } catch (e) {
         console.warn("[agentStore] 后端更新 Agent 失败:", e);
         throw e; // 不再静默吞掉错误
@@ -203,11 +203,11 @@ export const agentStore = {
     return agents[idx];
   },
 
-  // 删除 Agent — 调用后端 agent_config.delete
+  // 删除 Agent — 调用后端 agent.delete
   async remove(id: string): Promise<boolean> {
     if (rpc.connected) {
       try {
-        await rpc.call("agent_config.delete", { id });
+        await rpc.call("agent.delete", { id });
       } catch (e) {
         console.warn("[agentStore] 后端删除 Agent 失败:", id, e);
         throw e; // 不再静默吞掉错误
