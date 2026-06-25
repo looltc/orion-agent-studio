@@ -1,12 +1,13 @@
 // Agent & Provider 数据持久化层
-// 主存储：localStorage（前端权威源）
-// daemon 在线时同步到后端 agents.json / providers.json
+// 主存储：后端 Runtime Daemon（权威源）
+// 本地 localStorage 作为离线缓存，上线后优先从后端同步
 
 import type { Agent } from "@/types/agent";
 import type { LLMProvider } from "@/types/provider";
+import rpc from "@/client/rpc";
 
-const STORAGE_KEY = "orion_agents";
-const PROVIDER_STORAGE_KEY = "orion_providers";
+const STORAGE_KEY = "orion_agents_cache";
+const PROVIDER_STORAGE_KEY = "orion_providers_cache";
 
 // ── 检测运行环境 ──
 function isElectron(): boolean {
@@ -25,8 +26,8 @@ async function electronSave(agents: Agent[]): Promise<void> {
   if (api?.saveAgents) await api.saveAgents(agents);
 }
 
-// ── localStorage 读写 ──
-function localLoad(): Agent[] {
+// ── localStorage 缓存读写（离线降级）──
+function localCacheLoad(): Agent[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     return raw ? JSON.parse(raw) : [];
@@ -35,11 +36,11 @@ function localLoad(): Agent[] {
   }
 }
 
-function localSave(agents: Agent[]): void {
+function localCacheSave(agents: Agent[]): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(agents));
 }
 
-function localLoadProviders(): LLMProvider[] {
+function localCacheLoadProviders(): LLMProvider[] {
   try {
     const raw = localStorage.getItem(PROVIDER_STORAGE_KEY);
     return raw ? JSON.parse(raw) : [];
@@ -48,11 +49,11 @@ function localLoadProviders(): LLMProvider[] {
   }
 }
 
-function localSaveProviders(providers: LLMProvider[]): void {
+function localCacheSaveProviders(providers: LLMProvider[]): void {
   localStorage.setItem(PROVIDER_STORAGE_KEY, JSON.stringify(providers));
 }
 
-// ── 默认值 ──
+// ── 默认值（仅首次运行、后端无数据时使用）──
 export const DEFAULT_AGENTS: Agent[] = [
   {
     id: "orion-architect",
@@ -96,13 +97,26 @@ export const CAPABILITY_OPTIONS = [
   { key: "knowledge", label: "Knowledge" },
 ] as const;
 
-// ── 统一 API ──
+// ── 统一 API（后端为权威源）──
+
 export const agentStore = {
+  // 加载 Agent 列表
+  // 优先从后端加载；后端不可用时降级到 localStorage 缓存或默认值
   async load(): Promise<Agent[]> {
-    // localStorage 为权威源
-    const agents = localLoad();
-    if (agents.length > 0) return agents;
-    // 首次运行：尝试 Electron IPC
+    try {
+      if (rpc.connected) {
+        const result = await rpc.call("agent_config.list", {}) as any;
+        const agents = result.configs || [];
+        // 写入本地缓存
+        localCacheSave(agents);
+        return agents;
+      }
+    } catch (e) {
+      console.warn("[agentStore] 后端加载失败，使用本地缓存:", e);
+    }
+    // 离线降级：尝试 localStorage 缓存 → Electron IPC → 默认值
+    const cached = localCacheLoad();
+    if (cached.length > 0) return cached;
     if (isElectron()) {
       const fromIpc = await electronLoad();
       if (fromIpc.length > 0) return fromIpc;
@@ -110,17 +124,30 @@ export const agentStore = {
     return DEFAULT_AGENTS;
   },
 
+  // 保存 Agent 列表（全量同步到后端）
   async save(agents: Agent[]): Promise<void> {
-    localSave(agents);
+    // 后端为权威源：逐条同步
+    for (const agent of agents) {
+      try {
+        await rpc.call("agent_config.update", {
+          id: agent.id,
+          config: agent,
+        });
+      } catch (e) {
+        console.warn("[agentStore] 同步 Agent 到后端失败:", agent.id, e);
+      }
+    }
+    // 同时更新本地缓存
+    localCacheSave(agents);
     if (isElectron()) await electronSave(agents);
   },
 
+  // 创建 Agent
   async create(partial: Omit<Agent, "id" | "createdAt" | "metrics" | "status"> & {
     system_prompt?: string;
     skills?: string[];
     llm_provider_id?: string;
   }): Promise<Agent> {
-    const agents = await this.load();
     const agent: Agent = {
       ...partial,
       id: `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -131,29 +158,56 @@ export const agentStore = {
       skills: partial.skills,
       llm_provider_id: partial.llm_provider_id,
     };
+    // 优先写入后端
+    if (rpc.connected) {
+      try {
+        await rpc.call("agent_config.create", { config: agent });
+      } catch (e) {
+        console.warn("[agentStore] 后端创建 Agent 失败:", e);
+      }
+    }
+    // 更新本地缓存
+    const agents = await this.load();
     agents.push(agent);
-    await this.save(agents);
+    localCacheSave(agents);
     return agent;
   },
 
+  // 更新 Agent
   async update(id: string, patch: Partial<Agent> & {
     system_prompt?: string;
     skills?: string[];
     llm_provider_id?: string;
   }): Promise<Agent | null> {
+    // 优先更新后端
+    if (rpc.connected) {
+      try {
+        await rpc.call("agent_config.update", { id, config: patch });
+      } catch (e) {
+        console.warn("[agentStore] 后端更新 Agent 失败:", id, e);
+      }
+    }
     const agents = await this.load();
     const idx = agents.findIndex((a) => a.id === id);
     if (idx === -1) return null;
     agents[idx] = { ...agents[idx], ...patch, id: agents[idx].id };
-    await this.save(agents);
+    localCacheSave(agents);
     return agents[idx];
   },
 
+  // 删除 Agent
   async remove(id: string): Promise<boolean> {
+    if (rpc.connected) {
+      try {
+        await rpc.call("agent_config.delete", { id });
+      } catch (e) {
+        console.warn("[agentStore] 后端删除 Agent 失败:", id, e);
+      }
+    }
     const agents = await this.load();
     const filtered = agents.filter((a) => a.id !== id);
     if (filtered.length === agents.length) return false;
-    await this.save(filtered);
+    localCacheSave(filtered);
     return true;
   },
 
@@ -162,21 +216,37 @@ export const agentStore = {
     return agents.find((a) => a.id === id) || null;
   },
 
-  // ── Provider CRUD（localStorage 为权威源）──
+  // ── Provider CRUD（后端为权威源）──
   async loadProviders(): Promise<LLMProvider[]> {
-    const providers = localLoadProviders();
-    return providers.length > 0 ? providers : DEFAULT_PROVIDERS;
+    try {
+      if (rpc.connected) {
+        const result = await rpc.call("provider.list", {}) as any;
+        const providers = result.providers || [];
+        localCacheSaveProviders(providers);
+        return providers;
+      }
+    } catch (e) {
+      console.warn("[agentStore] 后端加载 Provider 失败，使用本地缓存:", e);
+    }
+    const cached = localCacheLoadProviders();
+    return cached.length > 0 ? cached : DEFAULT_PROVIDERS;
   },
 
   async saveProviders(providers: LLMProvider[]): Promise<void> {
-    localSaveProviders(providers);
+    if (rpc.connected) {
+      try {
+        await rpc.call("provider.sync", { providers });
+      } catch (e) {
+        console.warn("[agentStore] 同步 Provider 到后端失败:", e);
+      }
+    }
+    localCacheSaveProviders(providers);
   },
 
   async createProvider(data: Partial<LLMProvider>): Promise<LLMProvider> {
-    const providers = await this.loadProviders();
-    // 重新计算默认值
     if (data.is_default) {
-      for (const p of providers) p.is_default = false;
+      const list = await this.loadProviders();
+      for (const p of list) p.is_default = false;
     }
     const provider: LLMProvider = {
       id: `provider-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -187,28 +257,51 @@ export const agentStore = {
       is_default: data.is_default ?? false,
       created_at: new Date().toISOString(),
     };
-    providers.push(provider);
-    await this.saveProviders(providers);
+    if (rpc.connected) {
+      try {
+        await rpc.call("provider.create", { provider });
+      } catch (e) {
+        console.warn("[agentStore] 后端创建 Provider 失败:", e);
+      }
+    }
+    const list = await this.loadProviders();
+    list.push(provider);
+    localCacheSaveProviders(list);
     return provider;
   },
 
   async updateProvider(id: string, data: Partial<LLMProvider>): Promise<LLMProvider | null> {
-    const providers = await this.loadProviders();
-    const idx = providers.findIndex((p) => p.id === id);
-    if (idx === -1) return null;
     if (data.is_default) {
-      for (const p of providers) p.is_default = false;
+      const list = await this.loadProviders();
+      for (const p of list) p.is_default = false;
     }
-    providers[idx] = { ...providers[idx], ...data, id: providers[idx].id };
-    await this.saveProviders(providers);
-    return providers[idx];
+    if (rpc.connected) {
+      try {
+        await rpc.call("provider.update", { id, provider: data });
+      } catch (e) {
+        console.warn("[agentStore] 后端更新 Provider 失败:", id, e);
+      }
+    }
+    const list = await this.loadProviders();
+    const idx = list.findIndex((p) => p.id === id);
+    if (idx === -1) return null;
+    list[idx] = { ...list[idx], ...data, id: list[idx].id };
+    localCacheSaveProviders(list);
+    return list[idx];
   },
 
   async deleteProvider(id: string): Promise<boolean> {
-    const providers = await this.loadProviders();
-    const filtered = providers.filter((p) => p.id !== id);
-    if (filtered.length === providers.length) return false;
-    await this.saveProviders(filtered);
+    if (rpc.connected) {
+      try {
+        await rpc.call("provider.delete", { id });
+      } catch (e) {
+        console.warn("[agentStore] 后端删除 Provider 失败:", id, e);
+      }
+    }
+    const list = await this.loadProviders();
+    const filtered = list.filter((p) => p.id !== id);
+    if (filtered.length === list.length) return false;
+    localCacheSaveProviders(filtered);
     return true;
   },
 };
