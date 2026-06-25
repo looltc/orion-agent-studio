@@ -6,8 +6,8 @@ import type { Agent } from "@/types/agent";
 import type { LLMProvider } from "@/types/provider";
 import rpc from "@/client/rpc";
 
-const STORAGE_KEY = "orion_agents_cache";
-const PROVIDER_STORAGE_KEY = "orion_providers_cache";
+const CACHE_KEY = "orion_agents_cache";
+const PROVIDER_CACHE_KEY = "orion_providers_cache";
 
 // ── 检测运行环境 ──
 function isElectron(): boolean {
@@ -26,10 +26,10 @@ async function electronSave(agents: Agent[]): Promise<void> {
   if (api?.saveAgents) await api.saveAgents(agents);
 }
 
-// ── localStorage 缓存读写（离线降级）──
+// ── localStorage 缓存读写 ──
 function localCacheLoad(): Agent[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(CACHE_KEY);
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
@@ -37,12 +37,12 @@ function localCacheLoad(): Agent[] {
 }
 
 function localCacheSave(agents: Agent[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(agents));
+  localStorage.setItem(CACHE_KEY, JSON.stringify(agents));
 }
 
 function localCacheLoadProviders(): LLMProvider[] {
   try {
-    const raw = localStorage.getItem(PROVIDER_STORAGE_KEY);
+    const raw = localStorage.getItem(PROVIDER_CACHE_KEY);
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
@@ -50,10 +50,10 @@ function localCacheLoadProviders(): LLMProvider[] {
 }
 
 function localCacheSaveProviders(providers: LLMProvider[]): void {
-  localStorage.setItem(PROVIDER_STORAGE_KEY, JSON.stringify(providers));
+  localStorage.setItem(PROVIDER_CACHE_KEY, JSON.stringify(providers));
 }
 
-// ── 默认值（仅首次运行、后端无数据时使用）──
+// ── 默认值 ──
 export const DEFAULT_AGENTS: Agent[] = [
   {
     id: "orion-architect",
@@ -98,7 +98,6 @@ export const CAPABILITY_OPTIONS = [
 ] as const;
 
 // ── 统一 API（后端为权威源）──
-
 export const agentStore = {
   // 加载 Agent 列表
   // 优先从后端加载；后端不可用时降级到 localStorage 缓存或默认值
@@ -106,8 +105,8 @@ export const agentStore = {
     try {
       if (rpc.connected) {
         const result = await rpc.call("agent_config.list", {}) as any;
-        const agents = result.configs || [];
-        // 写入本地缓存
+        // 后端返回 { agents: [...] }
+        const agents = result.agents || [];
         localCacheSave(agents);
         return agents;
       }
@@ -124,34 +123,18 @@ export const agentStore = {
     return DEFAULT_AGENTS;
   },
 
-  // 保存 Agent 列表（全量同步到后端）
-  async save(agents: Agent[]): Promise<void> {
-    // 后端为权威源：逐条同步
-    for (const agent of agents) {
-      try {
-        await rpc.call("agent_config.update", {
-          id: agent.id,
-          config: agent,
-        });
-      } catch (e) {
-        console.warn("[agentStore] 同步 Agent 到后端失败:", agent.id, e);
-      }
-    }
-    // 同时更新本地缓存
-    localCacheSave(agents);
-    if (isElectron()) await electronSave(agents);
-  },
-
-  // 创建 Agent
+  // 创建 Agent — 调用后端 agent_config.create
+  // 后端期望：name, role, system_prompt 等独立字段（非嵌套 config 对象）
   async create(partial: Omit<Agent, "id" | "createdAt" | "metrics" | "status"> & {
     system_prompt?: string;
     skills?: string[];
     llm_provider_id?: string;
   }): Promise<Agent> {
+    const now = new Date().toISOString();
     const agent: Agent = {
       ...partial,
       id: `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      createdAt: new Date().toISOString(),
+      createdAt: now,
       status: { state: "idle", message: "Ready for tasks" },
       metrics: { tasks: 0, successRate: 100, memoryCount: 0 },
       system_prompt: partial.system_prompt,
@@ -161,7 +144,15 @@ export const agentStore = {
     // 优先写入后端
     if (rpc.connected) {
       try {
-        await rpc.call("agent_config.create", { config: agent });
+        await rpc.call("agent_config.create", {
+          name: agent.name,
+          role: agent.role,
+          system_prompt: agent.system_prompt || "",
+          skills: agent.skills || [],
+          llm_provider_id: agent.llm_provider_id || "",
+          personality_name: agent.personality?.name || "",
+          personality_traits: agent.personality?.traits || [],
+        });
       } catch (e) {
         console.warn("[agentStore] 后端创建 Agent 失败:", e);
       }
@@ -173,7 +164,8 @@ export const agentStore = {
     return agent;
   },
 
-  // 更新 Agent
+  // 更新 Agent — 调用后端 agent_config.update
+  // 后端期望：id + 各字段独立（params.pop("id") 取出 id，其余作为参数）
   async update(id: string, patch: Partial<Agent> & {
     system_prompt?: string;
     skills?: string[];
@@ -182,7 +174,17 @@ export const agentStore = {
     // 优先更新后端
     if (rpc.connected) {
       try {
-        await rpc.call("agent_config.update", { id, config: patch });
+        const payload: Record<string, unknown> = { id };
+        if (patch.name !== undefined) payload.name = patch.name;
+        if (patch.role !== undefined) payload.role = patch.role;
+        if (patch.system_prompt !== undefined) payload.system_prompt = patch.system_prompt;
+        if (patch.skills !== undefined) payload.skills = patch.skills;
+        if (patch.llm_provider_id !== undefined) payload.llm_provider_id = patch.llm_provider_id;
+        if (patch.personality !== undefined) {
+          payload.personality_name = patch.personality.name;
+          payload.personality_traits = patch.personality.traits;
+        }
+        await rpc.call("agent_config.update", payload);
       } catch (e) {
         console.warn("[agentStore] 后端更新 Agent 失败:", id, e);
       }
@@ -195,7 +197,7 @@ export const agentStore = {
     return agents[idx];
   },
 
-  // 删除 Agent
+  // 删除 Agent — 调用后端 agent_config.delete
   async remove(id: string): Promise<boolean> {
     if (rpc.connected) {
       try {
@@ -204,6 +206,7 @@ export const agentStore = {
         console.warn("[agentStore] 后端删除 Agent 失败:", id, e);
       }
     }
+    // 刷新本地缓存
     const agents = await this.load();
     const filtered = agents.filter((a) => a.id !== id);
     if (filtered.length === agents.length) return false;
@@ -221,6 +224,7 @@ export const agentStore = {
     try {
       if (rpc.connected) {
         const result = await rpc.call("provider.list", {}) as any;
+        // 后端返回 { providers: [...] }
         const providers = result.providers || [];
         localCacheSaveProviders(providers);
         return providers;
@@ -232,18 +236,8 @@ export const agentStore = {
     return cached.length > 0 ? cached : DEFAULT_PROVIDERS;
   },
 
-  async saveProviders(providers: LLMProvider[]): Promise<void> {
-    if (rpc.connected) {
-      try {
-        await rpc.call("provider.sync", { providers });
-      } catch (e) {
-        console.warn("[agentStore] 同步 Provider 到后端失败:", e);
-      }
-    }
-    localCacheSaveProviders(providers);
-  },
-
   async createProvider(data: Partial<LLMProvider>): Promise<LLMProvider> {
+    // 清除其他 provider 的默认标志
     if (data.is_default) {
       const list = await this.loadProviders();
       for (const p of list) p.is_default = false;
@@ -259,7 +253,14 @@ export const agentStore = {
     };
     if (rpc.connected) {
       try {
-        await rpc.call("provider.create", { provider });
+        // 后端期望独立字段：name, base_url, api_key, model, is_default
+        await rpc.call("provider.create", {
+          name: provider.name,
+          base_url: provider.base_url,
+          api_key: provider.api_key,
+          model: provider.model,
+          is_default: provider.is_default,
+        });
       } catch (e) {
         console.warn("[agentStore] 后端创建 Provider 失败:", e);
       }
@@ -275,9 +276,17 @@ export const agentStore = {
       const list = await this.loadProviders();
       for (const p of list) p.is_default = false;
     }
+    // 优先更新后端
     if (rpc.connected) {
       try {
-        await rpc.call("provider.update", { id, provider: data });
+        // 后端期望：id + 各字段独立（params.pop("id") 取出 id）
+        const payload: Record<string, unknown> = { id };
+        if (data.name !== undefined) payload.name = data.name;
+        if (data.base_url !== undefined) payload.base_url = data.base_url;
+        if (data.api_key !== undefined) payload.api_key = data.api_key;
+        if (data.model !== undefined) payload.model = data.model;
+        if (data.is_default !== undefined) payload.is_default = data.is_default;
+        await rpc.call("provider.update", payload);
       } catch (e) {
         console.warn("[agentStore] 后端更新 Provider 失败:", id, e);
       }
