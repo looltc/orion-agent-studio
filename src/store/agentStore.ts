@@ -155,7 +155,10 @@ export const agentStore = {
         });
       } catch (e) {
         console.warn("[agentStore] 后端创建 Agent 失败:", e);
+        throw e; // 不再静默吞掉错误，让 UI 层处理
       }
+    } else {
+      console.warn("[agentStore] 后端不可用，Agent 仅写入本地缓存（重启后将丢失）");
     }
     // 更新本地缓存
     const agents = await this.load();
@@ -186,8 +189,11 @@ export const agentStore = {
         }
         await rpc.call("agent_config.update", payload);
       } catch (e) {
-        console.warn("[agentStore] 后端更新 Agent 失败:", id, e);
+        console.warn("[agentStore] 后端更新 Agent 失败:", e);
+        throw e; // 不再静默吞掉错误
       }
+    } else {
+      console.warn("[agentStore] 后端不可用，Agent 更新仅写入本地缓存（重启后将丢失）");
     }
     const agents = await this.load();
     const idx = agents.findIndex((a) => a.id === id);
@@ -204,7 +210,10 @@ export const agentStore = {
         await rpc.call("agent_config.delete", { id });
       } catch (e) {
         console.warn("[agentStore] 后端删除 Agent 失败:", id, e);
+        throw e; // 不再静默吞掉错误
       }
+    } else {
+      console.warn("[agentStore] 后端不可用，Agent 删除仅在本地缓存中生效");
     }
     // 刷新本地缓存
     const agents = await this.load();

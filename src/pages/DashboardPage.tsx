@@ -1,10 +1,11 @@
 ﻿import { useState, useEffect, useMemo } from "react";
-import { Search, Plus, Trash2 } from "lucide-react";
+import { Search, Plus, Trash2, Check, X, AlertTriangle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { Agent, AgentStatus } from "@/types/agent";
 import type { LLMProvider } from "@/types/provider";
 import { agentStore, CAPABILITY_OPTIONS } from "@/store/agentStore";
 import AgentCard from "@/components/agent/AgentCard";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import rpc from "@/client/rpc";
 
 const AVAILABLE_SKILLS = ["generate-daily-report", "summarize-meeting"];
@@ -48,6 +49,7 @@ export default function DashboardPage() {
   const [form, setForm] = useState<FormData>(emptyForm);
   const [providers, setProviders] = useState<LLMProvider[]>([]);
   const [providersLoading, setProvidersLoading] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -164,6 +166,19 @@ export default function DashboardPage() {
     setEditingAgent(null);
     setForm(emptyForm);
     refresh();
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!editingAgent) return;
+    await agentStore.remove(editingAgent.id);
+    setShowDeleteConfirm(false);
+    setEditingAgent(null);
+    setForm(emptyForm);
+    refresh();
+  };
+
+  const handleDeleteCancel = () => {
+    setShowDeleteConfirm(false);
   };
 
   const workingCount = agents.filter(

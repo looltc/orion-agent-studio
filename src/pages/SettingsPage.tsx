@@ -9,12 +9,16 @@ export default function SettingsPage() {
     useState<ConnectionStatus>("disconnected");
   const [daemonInfo, setDaemonInfo] = useState<Record<string, unknown>>({});
   const [reconnecting, setReconnecting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
 
   useEffect(() => {
     checkConnection();
     const unsub = rpc.onStatusChange((s) => {
       setConnectionStatus(s);
-      if (s === "connected") checkInfo();
+      if (s === "connected") {
+        checkInfo();
+        setConnectError(null);
+      }
       if (s === "disconnected") setDaemonInfo({});
     });
     return unsub;
@@ -39,12 +43,13 @@ export default function SettingsPage() {
 
   const handleReconnect = async () => {
     setReconnecting(true);
+    setConnectError(null);
     rpc.reconfigure(daemonHost, parseInt(daemonPort, 10) || 9877);
     try {
       await rpc.connect();
       await checkInfo();
-    } catch {
-      // 状态通过 onStatusChange 更新
+    } catch (e: any) {
+      setConnectError(e?.message || "连接失败，请确认 Daemon 正在运行");
     } finally {
       setReconnecting(false);
     }
@@ -91,8 +96,9 @@ export default function SettingsPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-surface-500">主机地址（Host）</label>
+              <label htmlFor="daemon-host" className="text-xs text-surface-500">主机地址（Host）</label>
               <input
+                id="daemon-host"
                 type="text"
                 value={daemonHost}
                 onChange={(e) => setDaemonHost(e.target.value)}
@@ -100,8 +106,9 @@ export default function SettingsPage() {
               />
             </div>
             <div>
-              <label className="text-xs text-surface-500">端口（Port）</label>
+              <label htmlFor="daemon-port" className="text-xs text-surface-500">端口（Port）</label>
               <input
+                id="daemon-port"
                 type="text"
                 value={daemonPort}
                 onChange={(e) => setDaemonPort(e.target.value)}
@@ -109,6 +116,12 @@ export default function SettingsPage() {
               />
             </div>
           </div>
+
+          {connectError && (
+            <div className="p-3 rounded-lg bg-red-900/20 border border-red-800/50 text-red-400 text-xs">
+              {connectError}
+            </div>
+          )}
 
           <button
             onClick={handleReconnect}

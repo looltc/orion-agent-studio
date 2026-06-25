@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Trash2, Edit3, Check, X, Zap, Star, Globe, Cpu, Server } from "lucide-react";
+import { Plus, Trash2, Edit3, Check, X, Zap, Star, Globe, Cpu, Server, AlertTriangle } from "lucide-react";
 import type { LLMProvider } from "@/types/provider";
 import { agentStore } from "@/store/agentStore";
 import rpc from "@/client/rpc";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 interface FormData {
   name: string;
@@ -34,6 +35,7 @@ export default function ProvidersPage() {
   } | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<LLMProvider | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadProviders = useCallback(async () => {
@@ -118,18 +120,28 @@ export default function ProvidersPage() {
     }
   };
 
-  const handleDelete = async (provider: LLMProvider) => {
-    setDeleting(provider.id);
+  const handleDeleteRequest = (provider: LLMProvider) => {
+    setDeleteTarget(provider);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    setDeleting(deleteTarget.id);
     setError(null);
     try {
-      await agentStore.deleteProvider(provider.id);
+      await agentStore.deleteProvider(deleteTarget.id);
       await loadProviders();
       await syncToDaemon();
     } catch (e: any) {
       setError(e?.message || "删除 Provider 失败");
     } finally {
       setDeleting(null);
+      setDeleteTarget(null);
     }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteTarget(null);
   };
 
   const handleTest = async (provider: LLMProvider) => {
@@ -145,6 +157,8 @@ export default function ProvidersPage() {
         latency_ms: 0,
       });
       setTesting(null);
+      // Auto-dismiss after 5s
+      setTimeout(() => setTestResult(null), 5000);
       return;
     }
 
@@ -155,6 +169,8 @@ export default function ProvidersPage() {
         model: provider.model,
       });
       setTestResult({ providerId: provider.id, ...result });
+      // Auto-dismiss after 5s
+      setTimeout(() => setTestResult(null), 5000);
     } catch (e: any) {
       setTestResult({
         providerId: provider.id,
@@ -162,6 +178,7 @@ export default function ProvidersPage() {
         message: e?.message || "测试失败",
         latency_ms: 0,
       });
+      setTimeout(() => setTestResult(null), 5000);
     } finally {
       setTesting(null);
     }
@@ -303,7 +320,7 @@ export default function ProvidersPage() {
                     <Edit3 size={16} />
                   </button>
                   <button
-                    onClick={() => handleDelete(p)}
+                    onClick={() => handleDeleteRequest(p)}
                     disabled={deleting === p.id}
                     className="p-1.5 rounded-lg text-surface-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                     title="删除"

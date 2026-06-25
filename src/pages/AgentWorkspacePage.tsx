@@ -15,6 +15,7 @@ import AgentMetricsDisplay from "@/components/agent/AgentMetrics";
 import WorkspaceNav from "@/components/workspace/WorkspaceNav";
 import ApprovalDialog from "@/components/ApprovalDialog";
 import ThoughtCard, { type ThinkEntry } from "@/components/ThoughtCard";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import rpc from "@/client/rpc";
 
 // ── Chat message model (same as TasksPage) ──
@@ -66,9 +67,19 @@ export default function AgentWorkspacePage() {
   const [sessionId, setSessionId] = useState<string>(() => {
     return `session-${Date.now()}`;
   });
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
-  const newSession = () => {
+  const openClearConfirm = () => {
+    setShowClearConfirm(true);
+  };
+
+  const handleClearConfirm = () => {
+    setShowClearConfirm(false);
     setSessionId(`session-${Date.now()}`);
+  };
+
+  const handleClearCancel = () => {
+    setShowClearConfirm(false);
   };
 
   // ── Chat state ──

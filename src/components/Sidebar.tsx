@@ -50,8 +50,9 @@ export default function Sidebar() {
                   : "text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 hover:text-surface-900 dark:hover:text-white"
               }`
             }
+            aria-label={item.label}
           >
-            <item.icon size={18} />
+            <item.icon size={18} aria-hidden="true" />
             {item.label}
           </NavLink>
         ))}
